@@ -1,0 +1,836 @@
+---
+title: "sinatra-contrib"
+description: "Official Sinatra extensions for JSON, reloading, namespaces, content negotiation, and more"
+---
+
+`sinatra-contrib` is the official collection of Sinatra extensions, maintained alongside Sinatra itself and released with the same version number. It includes common helpers and extensions that cover the most frequently requested functionality.
+
+## Installation
+
+<Tabs>
+  <Tab title="Bundler">
+    Add to your `Gemfile`:
+
+    ```ruby Gemfile
+    gem 'sinatra-contrib'
+    ```
+
+    Then run:
+
+    ```bash
+    bundle install
+    ```
+  </Tab>
+  <Tab title="Standalone">
+    ```bash
+    gem install sinatra-contrib
+    ```
+  </Tab>
+</Tabs>
+
+## Loading extensions
+
+You can require individual extensions or load the full collection.
+
+<CodeGroup>
+
+```ruby Classic — single extension
+require 'sinatra'
+require 'sinatra/content_for'
+```
+
+```ruby Classic — common extensions
+require 'sinatra'
+require 'sinatra/contrib'
+```
+
+```ruby Classic — all extensions
+require 'sinatra'
+require 'sinatra/contrib/all'
+```
+
+```ruby Modular — single extension
+require 'sinatra/base'
+require 'sinatra/content_for'
+require 'sinatra/namespace'
+
+class MyApp < Sinatra::Base
+  helpers Sinatra::ContentFor
+  register Sinatra::Namespace
+end
+```
+
+```ruby Modular — common extensions
+require 'sinatra/base'
+require 'sinatra/contrib'
+
+class MyApp < Sinatra::Base
+  register Sinatra::Contrib
+end
+```
+
+</CodeGroup>
+
+<Note>
+Some modules are registered with `register`, others are included with `helpers`. Check the documentation for each extension to see which applies.
+</Note>
+
+## Extensions
+
+<AccordionGroup>
+  <Accordion title="sinatra/json — JSON helper">
+    Adds a `json` helper method that serializes an object and sets the `Content-Type` to `application/json`.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/json'
+
+    get '/' do
+      json foo: 'bar'
+    end
+    ```
+
+    **Custom encoder**
+
+    By default, `json` calls `to_json` on the object, or falls back to `MultiJson`. You can override this per-request or globally:
+
+    ```ruby
+    # Use a specific encoder globally
+    require 'json'
+    set :json_encoder, JSON
+
+    # Force to_json on every call
+    set :json_encoder, :to_json
+
+    # Override inline per route
+    get '/' do
+      json({ foo: 'bar' }, encoder: :to_json, content_type: :js)
+    end
+    ```
+
+    **Custom content type**
+
+    ```ruby
+    set :json_content_type, :js
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/reloader — Auto-reload on file changes">
+    <Warning>
+      `sinatra/reloader` is deprecated. Consider using [rerun](https://github.com/alexch/rerun) or [rack-unreloader](https://github.com/jeremyevans/rack-unreloader) instead.
+    </Warning>
+
+    Automatically reloads Ruby files that define routes, filters, error handlers, and inline templates whenever they change. Only triggers on incoming requests, and only if files have been modified.
+
+    <Tabs>
+      <Tab title="Classic">
+        ```ruby
+        require 'sinatra'
+        require 'sinatra/reloader' if development?
+        ```
+      </Tab>
+      <Tab title="Modular">
+        ```ruby
+        require 'sinatra/base'
+        require 'sinatra/reloader'
+
+        class MyApp < Sinatra::Base
+          configure :development do
+            register Sinatra::Reloader
+          end
+        end
+        ```
+      </Tab>
+    </Tabs>
+
+    **Controlling which files reload**
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/reloader' if development?
+
+    also_reload 'lib/*.rb'       # also watch these files
+    dont_reload 'lib/constants.rb' # never reload this file
+    after_reload do
+      puts 'reloaded'
+    end
+    ```
+
+    For modular apps, call these methods inside the `configure` block:
+
+    ```ruby
+    configure :development do
+      register Sinatra::Reloader
+      also_reload 'lib/*.rb'
+      dont_reload 'lib/constants.rb'
+      after_reload { puts 'reloaded' }
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/namespace — Route namespacing">
+    Adds a `namespace` method to share a path prefix across multiple routes. Filters, error handlers, helpers, and extensions defined inside a namespace apply only to the routes within it (and any nested namespaces).
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/namespace'
+
+    namespace '/blog' do
+      get do
+        haml :blog
+      end
+
+      get '/:entry_permalink' do
+        @entry = Entry.find_by_permalink!(params[:entry_permalink])
+        haml :entry
+      end
+    end
+    ```
+
+    **With conditions**
+
+    ```ruby
+    namespace '/admin', host_name: 'localhost' do
+      get('/dashboard') { haml :dashboard }
+      get('/login')     { haml :login }
+      post('/login')    { login_user }
+    end
+    ```
+
+    **Scoped filters and helpers**
+
+    ```ruby
+    namespace '/admin' do
+      helpers AdminHelpers
+      before  { authenticate unless request.path_info == '/admin/login' }
+
+      get '/dashboard' do
+        haml :dashboard
+      end
+    end
+
+    get '/' do
+      haml :index  # before filter above does not apply here
+    end
+    ```
+
+    **Nested namespaces**
+
+    ```ruby
+    namespace '/admin' do
+      namespace '/users' do
+        get do
+          @users = User.all
+          haml :users
+        end
+      end
+    end
+    ```
+
+    **Namespace-relative redirects**
+
+    Use `redirect_to` to redirect relative to the current namespace prefix:
+
+    ```ruby
+    namespace '/admin' do
+      get '/foo' do
+        redirect_to '/bar' # redirects to /admin/bar
+      end
+    end
+    ```
+
+    For modular apps, register the extension first:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      register Sinatra::Namespace
+
+      namespace '/users' do
+        get('/')  { 'user list' }
+      end
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/respond_with — Content negotiation">
+    Automatically selects a template or action based on the request's `Accept` header. Adds `respond_to` and `respond_with` helper methods.
+
+    **`respond_with`** takes a template name and/or an object. It searches for a matching template (e.g. `index.xml.nokogiri`) or calls a matching serialization method (e.g. `to_json`):
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/respond_with'
+
+    get '/' do
+      respond_with :index, name: 'example' do |f|
+        f.txt { 'just plain text' }
+      end
+    end
+    ```
+
+    **`respond_to`** for explicit per-format handling:
+
+    ```ruby
+    get '/' do
+      respond_to do |f|
+        f.html { haml :index }
+        f.json { json @data }
+        f.xml  { nokogiri :index }
+        f.on('application/custom') { custom_action }
+        f.on('*/*') { 'matches everything' }
+      end
+    end
+    ```
+
+    **Limiting accepted formats globally**
+
+    ```ruby
+    respond_to :html, :json, :xml, :atom
+
+    get('/a') { respond_with :index, name: 'a' }
+    get('/b') { respond_with :index, name: 'b' }
+    ```
+
+    <Note>
+      Since accepted formats are driven by the client's `Accept` header, limit the formats you serve using `:provides` or the class-level `respond_to` to avoid unexpected behavior.
+    </Note>
+  </Accordion>
+
+  <Accordion title="sinatra/cookies — Cookie helpers">
+    Provides a `cookies` helper that behaves like a hash for reading and writing cookies.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/cookies'
+
+    get '/set' do
+      cookies[:user] = 'alice'
+      redirect to('/')
+    end
+
+    get '/' do
+      "Hello, #{cookies[:user]}"
+    end
+
+    get '/delete' do
+      cookies.delete :user
+      redirect to('/')
+    end
+    ```
+
+    **Hash-like operations**
+
+    ```ruby
+    get '/demo' do
+      cookies.merge! 'foo' => 'bar', 'bar' => 'baz'
+      cookies.keep_if { |key, _value| key.start_with?('b') }
+      "size: #{cookies.length}"
+    end
+    ```
+
+    For modular apps, include it as a helper:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      helpers Sinatra::Cookies
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/content_for — Content blocks for layouts">
+    Rails-style `content_for` helpers for Erb, Erubi, Haml, and Slim. Lets views capture named blocks that layouts can render later.
+
+    **In a view** (`index.erb`):
+
+    ```erb
+    <% content_for :head do %>
+      <script type="text/javascript" src="/app.js"></script>
+    <% end %>
+    ```
+
+    **In the layout** (`layout.erb`):
+
+    ```erb
+    <head>
+      <title>My App</title>
+      <%= yield_content :head %>
+    </head>
+    <body>
+      <%= yield %>
+    </body>
+    ```
+
+    **Default fallback content**
+
+    ```erb
+    <% yield_content :sidebar do %>
+      <p>Default sidebar content</p>
+    <% end %>
+    ```
+
+    **Passing an immediate value**
+
+    ```erb
+    <% content_for :title, "My Page Title" %>
+    ```
+
+    **Checking if content exists**
+
+    ```erb
+    <% if content_for?(:scripts) %>
+      <%= yield_content :scripts %>
+    <% end %>
+    ```
+
+    For modular apps, include as a helper:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      helpers Sinatra::ContentFor
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/capture — Capture template blocks">
+    Enables capturing blocks inside templates, including across different template engines. Works with Erb, Slim, and Haml.
+
+    ```erb
+    <%# in hello_world.erb %>
+    Say
+    <% a = capture do %>World<% end %>
+    Hello <%= a %>!
+    ```
+
+    ```slim
+    / in hello_world.slim
+    | Say
+    - a = capture do
+      | World
+    |  Hello #{a}!
+    ```
+
+    **Nested captures**
+
+    ```erb
+    <% a = capture do %>
+      <% b = capture do %>World<% end %>
+      <%= b %>!
+    <% end %>
+    Hello <%= a.strip %>
+    ```
+
+    **Mixing template engines**
+
+    ```slim
+    - two = capture do
+      - erb "<%= 1 + 1 %>"
+    | 1 + 1 = #{two}
+    ```
+
+    For modular apps:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      helpers Sinatra::Capture
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/config_file — YAML configuration files">
+    Loads application configuration from YAML files, with optional per-environment sections.
+
+    **Basic usage**
+
+    Given `config.yml`:
+
+    ```yaml config.yml
+    greeting: Welcome to my application
+    database_url: postgres://localhost/myapp
+    ```
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/config_file'
+
+    config_file 'config.yml'
+
+    get '/' do
+      settings.greeting
+    end
+    ```
+
+    **Per-environment configuration**
+
+    ```yaml config.yml
+    development:
+      foo: dev_value
+      bar: shared
+    production:
+      foo: prod_value
+      bar: shared
+    ```
+
+    **YAML aliases for shared defaults**
+
+    ```yaml config.yml
+    default: &common
+      foo: 'foo'
+      bar: 'bar'
+
+    production:
+      <<: *common
+      bar: 'baz'
+    ```
+
+    For modular apps, register the extension:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      register Sinatra::ConfigFile
+
+      config_file 'config.yml'
+
+      get '/' do
+        @greeting = settings.greeting
+        haml :index
+      end
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/multi_route — Multiple HTTP methods per route">
+    Defines a single route handler for multiple paths or HTTP verbs.
+
+    **Multiple paths, one verb**
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/multi_route'
+
+    get '/foo', '/bar' do
+      'matched either path'
+    end
+    ```
+
+    **Multiple verbs, one path**
+
+    ```ruby
+    route :get, :post, '/' do
+      'handles GET and POST'
+    end
+    ```
+
+    **Multiple verbs and multiple paths**
+
+    ```ruby
+    route :get, :post, ['/foo', '/bar'] do
+      'handles all combinations'
+    end
+    ```
+
+    **Custom HTTP verbs**
+
+    ```ruby
+    route 'LIST', '/' do
+      'handles LIST requests'
+    end
+    ```
+
+    For modular apps:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      register Sinatra::MultiRoute
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/required_params — Parameter validation">
+    Ensures required query parameters are present. Halts with `400 Bad Request` if any are missing.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/required_params'
+
+    get '/search' do
+      required_params :q, :page
+      # continues only if both params are present
+    end
+    ```
+
+    **Nested parameter requirements**
+
+    ```ruby
+    get '/form' do
+      required_params :user => [:name, :email]
+    end
+    ```
+
+    For modular apps:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      helpers Sinatra::RequiredParams
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/custom_logger — Custom logger">
+    Lets you define a custom logger instance via the `logger` setting. The logger is then available as `logger` in routes and views.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/custom_logger'
+    require 'logger'
+
+    set :logger, Logger.new(STDOUT)
+
+    get '/' do
+      logger.info 'Handling request'
+      'Hello!'
+    end
+    ```
+
+    **File-based logger in modular apps**
+
+    ```ruby
+    require 'sinatra/base'
+    require 'sinatra/custom_logger'
+    require 'logger'
+
+    class MyApp < Sinatra::Base
+      helpers Sinatra::CustomLogger
+
+      configure :development, :production do
+        logger = Logger.new(File.open("#{root}/log/#{environment}.log", 'a'))
+        logger.level = Logger::DEBUG if development?
+        set :logger, logger
+      end
+
+      get '/' do
+        logger.info 'Handling request'
+        'Hello!'
+      end
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/link_header — Link header helpers">
+    Generates `Link` HTTP headers and their corresponding HTML `<link>` tags. Adds `link`, `stylesheet`, and `prefetch` helper methods.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/link_header'
+
+    get '/' do
+      # Sets Link header and returns HTML tag string
+      @stylesheet_tag = stylesheet '/app.css'
+      @prefetch_tag   = prefetch '/next-page'
+      haml :index
+    end
+    ```
+
+    **Manual link headers**
+
+    ```ruby
+    get '/' do
+      response['Link'] = '</foo>; rel="next"'
+      haml :index
+    end
+    ```
+
+    In the layout, use `link_headers` to render all current `Link` headers as HTML tags:
+
+    ```haml
+    %head= link_headers
+    %body= yield
+    ```
+
+    **Setting a link with a relation**
+
+    ```ruby
+    # Sets header: Link: </foo>; rel="next"
+    # Returns:     <link href="/foo" rel="next" />
+    link '/foo', rel: :next
+    ```
+
+    For modular apps:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      helpers Sinatra::LinkHeader
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/streaming — Enhanced streaming">
+    Improves Sinatra's built-in `stream` helper by making the stream object behave like an IO object. This is useful when passing the stream to libraries that expect `IO` or `StringIO`.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/streaming'
+
+    get '/' do
+      stream do |out|
+        out.puts 'Hello World!', 'How are you?'
+        out.write "Written #{out.pos} bytes so far!\n"
+        out.putc(65) unless out.closed?
+        out.flush
+      end
+    end
+    ```
+
+    **Middleware-compatible streaming**
+
+    Blocks passed to `map!` or `map` are applied when streaming takes place:
+
+    ```ruby
+    class UppercaseMiddleware
+      def initialize(app) = @app = app
+
+      def call(env)
+        status, headers, body = @app.call(env)
+        body.map! { |chunk| chunk.upcase }
+        [status, headers, body]
+      end
+    end
+
+    use UppercaseMiddleware
+
+    get '/' do
+      stream do |out|
+        out.puts 'still'
+        sleep 1
+        out.puts 'streaming'
+      end
+    end
+    ```
+
+    For modular apps:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      helpers Sinatra::Streaming
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/test_helpers — Test helper utilities">
+    Framework-agnostic helpers for testing Sinatra applications. Wraps `Rack::Test::Methods` and adds helpers for mocking apps and inspecting responses.
+
+    ```ruby
+    require 'sinatra/test_helpers'
+    require 'minitest/autorun'
+
+    class MyAppTest < Minitest::Test
+      include Sinatra::TestHelpers
+
+      def setup
+        mock_app do
+          get '/' do
+            'Hello!'
+          end
+        end
+      end
+
+      def test_root
+        get '/'
+        assert_equal 200, status
+        assert_equal 'Hello!', body
+      end
+    end
+    ```
+
+    **Available delegated methods**
+
+    | Method | Source |
+    |---|---|
+    | `body`, `headers`, `status`, `errors` | `last_response` |
+    | `configure`, `set`, `enable`, `disable`, `use`, `helpers`, `register` | `app` |
+    | `cookie_jar` | `rack_mock_session` |
+    | `env_for` | `current_session` |
+  </Accordion>
+
+  <Accordion title="sinatra/engine_tracking — Template engine detection">
+    Adds predicate methods to check which template engine is currently rendering. Useful for writing helpers that behave differently depending on the active engine.
+
+    Included automatically when you `require 'sinatra/contrib'`.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/engine_tracking'
+
+    helpers do
+      def my_helper
+        if haml?
+          # haml-specific output
+        elsif erb?
+          # erb-specific output
+        end
+      end
+    end
+    ```
+
+    Available predicates: `erb?`, `erubi?`, `haml?`, `sass?`, `scss?`, `builder?`, `liquid?`, `markdown?`, `rdoc?`, `markaby?`, `nokogiri?`, `slim?`, `ruby?`
+
+    For modular apps:
+
+    ```ruby
+    class MyApp < Sinatra::Base
+      helpers Sinatra::EngineTracking
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="sinatra/haml_helpers — Haml 5 compatibility helpers">
+    Provides helper methods (`surround`, `precede`, `succeed`) that existed in Haml 5 but were removed in Haml 6.
+
+    ```ruby
+    require 'sinatra/base'
+    require 'sinatra/haml_helpers'
+
+    class MyApp < Sinatra::Base
+      helpers Sinatra::HamlHelpers
+
+      get '/' do
+        haml_code = <<~HAML
+          %p
+            != surround "(", ")" do
+              %a{ href: "https://example.org/" } example.org
+        HAML
+        haml haml_code
+      end
+    end
+    ```
+
+    Methods provided: `surround(front, back = front)`, `precede(str)`, `succeed(str)`
+  </Accordion>
+
+  <Accordion title="sinatra/quiet_logger — Suppress access log for specific paths">
+    Excludes specific path prefixes from Rack's access log. Useful for silencing health check endpoints or static asset requests.
+
+    ```ruby
+    require 'sinatra'
+    require 'sinatra/quiet_logger'
+
+    set :quiet_logger_prefixes, %w(css js images fonts healthcheck)
+    register Sinatra::QuietLogger
+    ```
+
+    For modular apps:
+
+    ```ruby
+    require 'sinatra/base'
+    require 'sinatra/quiet_logger'
+
+    class MyApp < Sinatra::Base
+      set :quiet_logger_prefixes, %w(css js images fonts)
+      register Sinatra::QuietLogger
+    end
+    ```
+
+    <Note>
+      You must call `set :quiet_logger_prefixes` before registering `Sinatra::QuietLogger`. The prefixes are matched against the start of the request path.
+    </Note>
+  </Accordion>
+</AccordionGroup>

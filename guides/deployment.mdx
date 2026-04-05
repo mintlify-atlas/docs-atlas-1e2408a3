@@ -1,0 +1,225 @@
+---
+title: "Deployment"
+description: "Deploy your Sinatra application to production"
+---
+
+## Web servers
+
+Sinatra runs on any Rack-compatible web server. The recommended options are:
+
+<CardGroup cols={3}>
+  <Card title="Puma" icon="bolt" href="https://puma.io">
+    The default server. Multi-threaded and well-suited for production workloads.
+  </Card>
+  <Card title="Unicorn" icon="server" href="https://yhbt.net/unicorn/">
+    Pre-forking server. Good for apps that benefit from copy-on-write memory.
+  </Card>
+  <Card title="Passenger" icon="rocket" href="https://www.phusionpassenger.com">
+    Integrates with Nginx and Apache. Popular for traditional hosting environments.
+  </Card>
+</CardGroup>
+
+## Starting the server
+
+<Tabs>
+  <Tab title="Direct">
+    Run your app file directly using Ruby. Sinatra starts its built-in server (Puma by default):
+
+    ```bash
+    ruby myapp.rb
+    ```
+
+    Pass options on the command line:
+
+    ```bash
+    ruby myapp.rb -p 4567 -e production
+    ```
+  </Tab>
+  <Tab title="Rackup">
+    Use `rackup` with a `config.ru` file to let any Rack-compatible server handle your app:
+
+    ```bash
+    rackup config.ru -p 4567
+    ```
+  </Tab>
+  <Tab title="Bundler">
+    Use `bundle exec` to ensure the correct gem versions are loaded:
+
+    ```bash
+    bundle exec ruby myapp.rb
+    ```
+  </Tab>
+</Tabs>
+
+## Environments
+
+Sinatra supports three built-in environments: `development` (default), `production`, and `test`. Set the environment using the `APP_ENV` environment variable or the `-e` flag:
+
+```bash
+APP_ENV=production ruby myapp.rb
+```
+
+```bash
+ruby myapp.rb -e production
+```
+
+The environment affects default settings such as error page display, logging, and reloading behavior.
+
+<Note>
+In production, Sinatra disables the detailed exception page and enables more conservative defaults. Make sure your error handlers are configured appropriately before deploying.
+</Note>
+
+## Production config.ru
+
+A typical `config.ru` for production:
+
+```ruby
+# config.ru
+require 'bundler/setup'
+require './app'
+
+# Enable logging in production
+set :logging, true
+
+run MyApp
+```
+
+For a classic-style app:
+
+```ruby
+# config.ru
+require 'bundler/setup'
+require './app'
+
+run Sinatra::Application
+```
+
+## Dependency management with Bundler
+
+Use [Bundler](https://bundler.io) to manage gems in production. Create a `Gemfile`:
+
+```ruby
+source 'https://rubygems.org'
+
+gem 'sinatra'
+gem 'puma'
+gem 'rackup'
+```
+
+Install dependencies:
+
+```bash
+bundle install
+```
+
+Run with Bundler in production:
+
+```bash
+bundle exec rackup config.ru -p 4567
+```
+
+<Tip>
+To run against Sinatra's latest development code, point Bundler at the GitHub repository:
+
+```ruby
+gem 'sinatra', github: 'sinatra/sinatra'
+```
+</Tip>
+
+## Server settings
+
+Pass additional options to the underlying server using `server_settings`:
+
+```ruby
+set :server_settings, timeout: 30, tcp_nopush: true
+```
+
+These options are passed directly to the Rack handler and vary by server. Consult your chosen server's documentation for supported keys.
+
+## Running multiple instances
+
+When running multiple instances of your app (for horizontal scaling), session secrets must be shared across all instances so that sessions created by one instance can be read by another:
+
+```ruby
+set :session_secret, ENV.fetch('SESSION_SECRET')
+```
+
+Store the secret in an environment variable and ensure all instances share the same value.
+
+## Deployment platforms
+
+<Tabs>
+  <Tab title="Heroku">
+    Create a `Procfile` in your project root:
+
+    ```
+    web: bundle exec ruby app.rb -p $PORT
+    ```
+
+    Or using rackup:
+
+    ```
+    web: bundle exec rackup config.ru -p $PORT
+    ```
+
+    Heroku sets `APP_ENV` automatically for standard Ruby buildpack deployments. Commit your `Gemfile` and `Gemfile.lock` before deploying:
+
+    ```bash
+    git add Gemfile Gemfile.lock Procfile
+    git commit -m "prepare for Heroku deployment"
+    git push heroku main
+    ```
+  </Tab>
+  <Tab title="systemd">
+    Create a systemd service unit at `/etc/systemd/system/myapp.service`:
+
+    ```ini
+    [Unit]
+    Description=My Sinatra App
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=deploy
+    WorkingDirectory=/var/www/myapp
+    Environment=APP_ENV=production
+    Environment=SESSION_SECRET=your_secret_here
+    ExecStart=/usr/local/bin/bundle exec rackup config.ru -p 4567
+    Restart=on-failure
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    Enable and start the service:
+
+    ```bash
+    sudo systemctl enable myapp
+    sudo systemctl start myapp
+    ```
+  </Tab>
+  <Tab title="Passenger + Nginx">
+    With Phusion Passenger and Nginx, point your server block at your app's `config.ru`:
+
+    ```nginx
+    server {
+        listen 80;
+        server_name example.com;
+        root /var/www/myapp/public;
+        passenger_enabled on;
+        passenger_ruby /path/to/ruby;
+    }
+    ```
+
+    Passenger automatically reads `config.ru` from the root of your project.
+  </Tab>
+</Tabs>
+
+<Note>
+Recommended production settings:
+
+- Set `APP_ENV=production` to disable development-only features.
+- Use a process manager (systemd, Supervisor, or Heroku dynos) to keep the app running and restart it on failure.
+- Store secrets (session keys, API tokens) in environment variables, not in source code.
+- Put a reverse proxy (Nginx, Apache, or a CDN) in front of your Ruby server to serve static assets and handle TLS termination.
+</Note>

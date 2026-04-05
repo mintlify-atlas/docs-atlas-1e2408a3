@@ -1,97 +1,63 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Welcome to Sinatra"
+description: "A minimal Ruby DSL for quickly building web applications and APIs with routing, templates, middleware, and extensions."
 ---
 
-## Setting up
+Sinatra is a lightweight Ruby framework that lets you define routes, render templates, and handle HTTP requests with minimal boilerplate. Whether you're building a microservice, a REST API, or a full web app, Sinatra gets you running in minutes.
 
-Get your documentation site up and running in minutes.
+```ruby
+require 'sinatra'
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+get '/' do
+  'Hello world!'
+end
+```
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get a Sinatra app running in under 5 minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="gem" href="/installation">
+    Install Sinatra and set up your project.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Routes" icon="route" href="/guides/routes">
+    Define HTTP routes with named params, wildcards, and conditions.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Templates" icon="layer-group" href="/guides/templates">
+    Render ERB, Haml, Slim, Markdown, and 10+ other template engines.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Explore the framework
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Filters & Helpers" icon="filter" href="/guides/filters-and-helpers">
+    Run code before and after requests. Define reusable helper methods.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/guides/configuration">
+    Configure environments, settings, and attack protection.
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle 404s, exceptions, and custom error responses.
+  </Card>
+  <Card title="Sessions & Security" icon="lock" href="/guides/sessions-and-security">
+    Manage sessions securely with HMAC-SHA1 signing.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Go further
 
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Modular Apps" icon="cubes" href="/guides/modular-apps">
+    Use Sinatra::Base for middleware, libraries, and larger applications.
+  </Card>
+  <Card title="Rack Middleware" icon="server" href="/guides/rack-middleware">
+    Integrate Rack middleware into your Sinatra application.
+  </Card>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Write tests for your Sinatra app using Rack::Test.
+  </Card>
+  <Card title="Extensions" icon="puzzle-piece" href="/extensions/sinatra-contrib">
+    Explore sinatra-contrib helpers: JSON, reloader, namespaces, and more.
+  </Card>
+</CardGroup>

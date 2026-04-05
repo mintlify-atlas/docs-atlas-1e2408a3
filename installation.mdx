@@ -1,0 +1,149 @@
+---
+title: "Installation"
+description: "Install Sinatra and set up a new project"
+keywords: ["sinatra", "install", "ruby", "bundler", "gemfile", "rubygems", "setup"]
+---
+
+## Requirements
+
+- **Ruby >= 2.7.8** — Required as of Sinatra 4.0.0. Older Ruby versions are no longer supported.
+- **RubyGems** — Included with Ruby. Used to install gems.
+- **Bundler** (recommended) — Manages per-project gem dependencies. Install with `gem install bundler`.
+
+Sinatra works on any operating system supported by your Ruby implementation. MRI Ruby (CRuby), TruffleRuby, and JRuby are all supported.
+
+## Install Sinatra
+
+<CodeGroup>
+
+```bash RubyGems
+gem install sinatra
+```
+
+```bash Bundler
+bundle add sinatra
+```
+
+</CodeGroup>
+
+### Installing with RubyGems
+
+The quickest way to get started is to install Sinatra directly:
+
+```bash
+gem install sinatra rackup puma
+```
+
+This installs Sinatra along with `rackup` (the Rack CLI) and Puma (a production-ready web server). You can then run any Sinatra file directly with `ruby myapp.rb`.
+
+### Installing with Bundler
+
+For any project beyond a quick script, use Bundler to pin your dependencies. Create a `Gemfile` in your project directory:
+
+```ruby Gemfile
+source 'https://rubygems.org'
+
+gem 'sinatra'
+gem 'puma'
+gem 'rackup'
+```
+
+Then install the gems:
+
+```bash
+bundle install
+```
+
+Run your app through Bundler to ensure it uses the exact gem versions specified in `Gemfile.lock`:
+
+```bash
+bundle exec ruby myapp.rb
+```
+
+## Require styles
+
+How you require Sinatra determines which application style you use.
+
+### Classic style
+
+```ruby
+require 'sinatra'
+
+get '/' do
+  'Hello world!'
+end
+```
+
+`require 'sinatra'` loads the full framework and mixes the Sinatra DSL into the Ruby main namespace. Routes and helpers defined at the top level belong to `Sinatra::Application`. This style is the fastest way to get started and works well for single-file applications.
+
+### Modular style
+
+```ruby
+require 'sinatra/base'
+
+class MyApp < Sinatra::Base
+  get '/' do
+    'Hello world!'
+  end
+
+  run! if app_file == $0
+end
+```
+
+`require 'sinatra/base'` loads Sinatra without modifying the global namespace. You define your application as a subclass of `Sinatra::Base`. This style supports multiple applications in a single Ruby process and is the right choice for libraries, middleware, and larger projects.
+
+<Note>
+  `Sinatra::Base` has most options disabled by default (logging, static file serving, etc.). Configure them explicitly with `set`, or subclass `Sinatra::Application` to inherit classic-style defaults.
+</Note>
+
+## Web server options
+
+Sinatra runs with any Rack-compatible web server. Pass the `-s` flag to select one at startup:
+
+```bash
+ruby myapp.rb -s puma
+```
+
+| Server | Notes |
+|--------|-------|
+| **Puma** | Default and recommended. Fast, concurrent, and actively maintained. |
+| **Unicorn** | Process-based, suitable for copy-on-write memory optimization. |
+| **Passenger** | Popular for deployment on Nginx and Apache. Requires a `config.ru`. |
+
+For Passenger and similar servers, create a `config.ru` file at the project root:
+
+```ruby config.ru
+require './myapp'
+run Sinatra::Application  # classic style
+# or: run MyApp           # modular style
+```
+
+Then start with:
+
+```bash
+rackup -p 4567
+```
+
+## Verify your installation
+
+Create a minimal `myapp.rb` and run it to confirm everything is working:
+
+```ruby myapp.rb
+require 'sinatra'
+
+get '/' do
+  'Sinatra is installed and working.'
+end
+```
+
+```bash
+ruby myapp.rb
+```
+
+Open `http://localhost:4567` in your browser. You should see `Sinatra is installed and working.`
+
+## Next steps
+
+- Follow the [Quick Start](/quickstart) guide to build your first real app.
+- Learn how routes work in [Routes](/guides/routes).
+- Switch to modular style when you're ready: [Modular apps](/guides/modular-apps).

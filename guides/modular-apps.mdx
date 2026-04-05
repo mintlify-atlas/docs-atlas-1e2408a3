@@ -1,0 +1,301 @@
+---
+title: "Modular applications"
+description: "Use Sinatra::Base for middleware, libraries, and larger applications"
+---
+
+Defining your app at the top level works well for micro-apps but has considerable drawbacks when building reusable components such as Rack middleware, Rails metal, simple libraries with a server component, or Sinatra extensions. The top level assumes a micro-app style configuration (a single application file, `./public` and `./views` directories, logging, exception detail page, etc.). That's where `Sinatra::Base` comes in.
+
+## Creating a modular app
+
+Require `sinatra/base` instead of `sinatra`, then subclass `Sinatra::Base`:
+
+```ruby
+require 'sinatra/base'
+
+class MyApp < Sinatra::Base
+  set :sessions, true
+  set :foo, 'bar'
+
+  get '/' do
+    'Hello world!'
+  end
+end
+```
+
+The methods available to `Sinatra::Base` subclasses are exactly the same as those available via the top-level DSL. Most top-level apps can be converted to `Sinatra::Base` components with two modifications:
+
+- Require `sinatra/base` instead of `sinatra`. Otherwise, all of Sinatra's DSL methods are imported into the main namespace.
+- Put your app's routes, error handlers, filters, and options inside the subclass.
+
+## Sinatra::Base vs Sinatra::Application
+
+`Sinatra::Base` is a blank slate — most options are disabled by default, including the built-in server. If you want behavior closer to the classic (top-level) style, subclass `Sinatra::Application` instead:
+
+```ruby
+require 'sinatra/base'
+
+class MyApp < Sinatra::Application
+  get '/' do
+    'Hello world!'
+  end
+end
+```
+
+## Classic vs modular style comparison
+
+There is nothing wrong with the classic style. If it suits your application, you do not have to switch. The main disadvantage of classic style is that you can only have one Sinatra application per Ruby process. If you need more than one, switch to modular style.
+
+When switching between styles, be aware of these different default settings:
+
+| Setting            | Classic                     | Modular (Sinatra::Base)              | Modular (Sinatra::Application) |
+| ------------------ | --------------------------- | ------------------------------------ | ------------------------------ |
+| `app_file`         | File loading sinatra        | File subclassing `Sinatra::Base`     | File subclassing `Sinatra::Application` |
+| `run`              | `$0 == app_file`            | `false`                              | `false`                        |
+| `logging`          | `true`                      | `false`                              | `true`                         |
+| `method_override`  | `true`                      | `false`                              | `true`                         |
+| `inline_templates` | `true`                      | `false`                              | `true`                         |
+| `static`           | `true`                      | `File.exist?(public_folder)`         | `true`                         |
+
+## Serving a modular app
+
+### Using run!
+
+Start the server directly from your app file:
+
+```ruby
+# my_app.rb
+require 'sinatra/base'
+
+class MyApp < Sinatra::Base
+  # ... app code here ...
+
+  # start the server if ruby file executed directly
+  run! if app_file == $0
+end
+```
+
+```bash
+ruby my_app.rb
+```
+
+### Using config.ru
+
+A `config.ru` file lets you use any Rack handler:
+
+```ruby
+# config.ru
+require './my_app'
+
+run MyApp
+```
+
+```bash
+rackup -p 4567
+```
+
+### Classic app with config.ru
+
+Write your classic-style app file:
+
+```ruby
+# app.rb
+require 'sinatra'
+
+get '/' do
+  'Hello world!'
+end
+```
+
+Then add a `config.ru`:
+
+```ruby
+# config.ru
+require './app'
+
+run Sinatra::Application
+```
+
+## When to use config.ru
+
+A `config.ru` file is recommended when:
+
+- You want to deploy with a different Rack handler (Passenger, Unicorn, Heroku).
+- You want to use more than one subclass of `Sinatra::Base`.
+- You want to use Sinatra only as middleware and not as an endpoint.
+
+<Note>
+There is no need to switch to a `config.ru` simply because you switched to the modular style, and you don't have to use the modular style for running with a `config.ru`.
+</Note>
+
+## Using Sinatra as Rack middleware
+
+Any Sinatra application can be added in front of any Rack endpoint as middleware itself. This endpoint could be another Sinatra application, or any other Rack-based application (Rails, Hanami, Roda, etc.):
+
+```ruby
+require 'sinatra/base'
+
+class LoginScreen < Sinatra::Base
+  enable :sessions
+
+  get('/login') { haml :login }
+
+  post('/login') do
+    if params['name'] == 'admin' && params['password'] == 'admin'
+      session['user_name'] = params['name']
+    else
+      redirect '/login'
+    end
+  end
+end
+
+class MyApp < Sinatra::Base
+  # middleware will run before filters
+  use LoginScreen
+
+  before do
+    unless session['user_name']
+      halt "Access denied, please <a href='/login'>login</a>."
+    end
+  end
+
+  get('/') { "Hello #{session['user_name']}." }
+end
+```
+
+## Dynamic app creation
+
+Use `Sinatra.new` to create applications at runtime without assigning them to a constant:
+
+```ruby
+require 'sinatra/base'
+
+my_app = Sinatra.new { get('/') { "hi" } }
+my_app.run!
+```
+
+`Sinatra.new` accepts an optional parent application to inherit from, which is useful for sharing configuration across multiple sub-apps:
+
+```ruby
+# config.ru
+require 'sinatra/base'
+
+controller = Sinatra.new do
+  enable :logging
+  helpers MyHelpers
+end
+
+map('/a') do
+  run Sinatra.new(controller) { get('/') { 'a' } }
+end
+
+map('/b') do
+  run Sinatra.new(controller) { get('/') { 'b' } }
+end
+```
+
+You can also use `Sinatra.new` to mount a Sinatra app as middleware inline in `config.ru`:
+
+```ruby
+require 'sinatra/base'
+
+use Sinatra do
+  get('/') { ... }
+end
+
+run RailsProject::Application
+```
+
+## Scopes and binding
+
+The scope you are currently in determines what methods and variables are available.
+
+### Application (class) scope
+
+Every Sinatra application corresponds to a subclass of `Sinatra::Base`. At the class level you have methods like `get` or `before`, but you cannot access the `request` or `session` objects — there is only a single application class for all requests.
+
+Options created with `set` are methods at the class level:
+
+```ruby
+class MyApp < Sinatra::Base
+  # application scope
+  set :foo, 42
+  foo # => 42
+
+  get '/foo' do
+    # request scope — no longer in application scope
+  end
+end
+```
+
+You are in the application scope inside:
+
+- Your application class body
+- Methods defined by extensions
+- The block passed to `helpers`
+- Procs/blocks used as a value for `set`
+- The block passed to `Sinatra.new`
+
+You can reach the scope object (the class) via:
+
+- The object passed to `configure` blocks: `configure { |c| ... }`
+- The `settings` helper from within the request scope
+
+### Request (instance) scope
+
+For every incoming request, a new instance of your application class is created and all handler blocks run in that scope. From within this scope you can access the `request` and `session` objects and call rendering methods like `erb` or `haml`. Access the application scope from within the request scope via the `settings` helper:
+
+```ruby
+class MyApp < Sinatra::Base
+  get '/define_route/:name' do
+    # request scope for '/define_route/:name'
+    @value = 42
+
+    settings.get("/#{params['name']}") do
+      # request scope for "/#{params['name']}"
+      @value # => nil (not the same request)
+    end
+
+    "Route defined!"
+  end
+end
+```
+
+You have the request scope inside:
+
+- `get`, `head`, `post`, `put`, `delete`, `options`, `patch`, `link`, and `unlink` blocks
+- `before` and `after` filters
+- Helper methods
+- Templates/views
+
+### Delegation scope
+
+The delegation scope forwards methods to the class scope but does not have the class binding. Only methods explicitly marked for delegation are available, and you do not share variables or state with the class scope. You can add delegations explicitly by calling `Sinatra::Delegator.delegate :method_name`.
+
+You have the delegate scope inside:
+
+- The top-level binding, if you did `require "sinatra"`
+- An object extended with the `Sinatra::Delegator` mixin
+
+## Command line options
+
+Sinatra applications can be run directly:
+
+```bash
+ruby myapp.rb [-h] [-x] [-q] [-e ENVIRONMENT] [-p PORT] [-o HOST] [-s HANDLER]
+```
+
+| Flag | Description                                    |
+| ---- | ---------------------------------------------- |
+| `-h` | Show help                                      |
+| `-p` | Set the port (default: `4567`)                 |
+| `-o` | Set the host (default: `0.0.0.0`)              |
+| `-e` | Set the environment (default: `development`)   |
+| `-s` | Specify Rack server/handler (default: `puma`)  |
+| `-q` | Turn on quiet mode for server (default: off)   |
+| `-x` | Turn on the mutex lock (default: off)          |
+
+## Multi-threading
+
+Sinatra doesn't impose any concurrency model — it leaves that to the underlying Rack handler (server) like Puma or Falcon. Sinatra itself is thread-safe, so there is no problem if the Rack handler uses a threaded model of concurrency.
+
+The `-x` flag enables a mutex lock, which forces Sinatra to serialize all requests. This is useful if your application or a library it uses is not thread-safe, but it comes at a performance cost. Most modern deployments should omit `-x` and rely on thread-safe code.

@@ -1,0 +1,395 @@
+---
+title: "Routes"
+description: "Define HTTP routes with named parameters, wildcards, conditions, and custom matchers"
+---
+
+In Sinatra, a route is an HTTP method paired with a URL-matching pattern. Each route is associated with a block that runs when the pattern matches an incoming request.
+
+## HTTP methods
+
+Sinatra supports all standard HTTP verbs, plus `link` and `unlink`:
+
+```ruby
+get '/' do
+  # show something
+end
+
+post '/' do
+  # create something
+end
+
+put '/' do
+  # replace something
+end
+
+patch '/' do
+  # modify something
+end
+
+delete '/' do
+  # annihilate something
+end
+
+options '/' do
+  # appease something
+end
+
+link '/' do
+  # affiliate something
+end
+
+unlink '/' do
+  # separate something
+end
+```
+
+## Route matching order
+
+Routes are matched in the order they are defined. The first route that matches the request is invoked.
+
+<Note>
+Routes with trailing slashes are distinct from routes without them. `GET /foo` does not match a route defined as `get '/foo/'`.
+</Note>
+
+## Named parameters
+
+Use `:name` segments in a route pattern to capture dynamic URL segments.
+
+<Tabs>
+  <Tab title="params hash">
+    ```ruby
+    get '/hello/:name' do
+      # matches "GET /hello/foo" and "GET /hello/bar"
+      # params['name'] is 'foo' or 'bar'
+      "Hello #{params['name']}!"
+    end
+    ```
+  </Tab>
+  <Tab title="block parameters">
+    ```ruby
+    get '/hello/:name' do |n|
+      # n stores params['name']
+      "Hello #{n}!"
+    end
+    ```
+  </Tab>
+</Tabs>
+
+## Splat (wildcard) parameters
+
+Use `*` to capture one or more path segments. Captured values are available as an array in `params['splat']`.
+
+```ruby
+get '/say/*/to/*' do
+  # matches /say/hello/to/world
+  params['splat'] # => ["hello", "world"]
+end
+
+get '/download/*.*' do
+  # matches /download/path/to/file.xml
+  params['splat'] # => ["path/to/file", "xml"]
+end
+```
+
+You can also receive splat segments as block parameters:
+
+```ruby
+get '/download/*.*' do |path, ext|
+  [path, ext] # => ["path/to/file", "xml"]
+end
+```
+
+## Optional parameters
+
+Append `?` to a named segment to make it optional:
+
+```ruby
+get '/posts/:format?' do
+  # matches "GET /posts/" and "GET /posts/json", "GET /posts/xml", etc.
+end
+```
+
+## Query parameters
+
+Query string values are merged into `params` automatically:
+
+```ruby
+get '/posts' do
+  # matches "GET /posts?title=foo&author=bar"
+  title  = params['title']
+  author = params['author']
+  # title and author are optional; the route still matches /posts
+end
+```
+
+## Regular expression routes
+
+You can use a regular expression as the route pattern. Captures are available via `params['captures']` or block parameters:
+
+```ruby
+get /\/hello\/([\w]+)/ do
+  "Hello, #{params['captures'].first}!"
+end
+```
+
+```ruby
+get %r{/hello/([\w]+)} do |c|
+  # matches "GET /hello/world", "GET /meta/hello/world", etc.
+  "Hello, #{c}!"
+end
+```
+
+## Mustermann options
+
+Pass a `:mustermann_opts` hash to customise how Sinatra compiles a route pattern:
+
+```ruby
+get '\A/posts\z', :mustermann_opts => { :type => :regexp, :check_anchors => false } do
+  # matches /posts exactly, with explicit anchoring
+  "If you match an anchored pattern clap your hands!"
+end
+```
+
+<Note>
+`:mustermann_opts` is merged into the global Mustermann options for that route only. It is not the same as a condition.
+</Note>
+
+## Conditions
+
+### Built-in conditions
+
+Sinatra provides several built-in conditions you can attach to a route:
+
+```ruby
+# Match on User-Agent header
+get '/foo', :agent => /Songbird (\d\.\d)[\d\/]*?/ do
+  "You're using Songbird version #{params['agent'][0]}"
+end
+
+get '/foo' do
+  # matches non-Songbird browsers
+end
+
+# Match on Host header
+get '/', :host_name => /^admin\./ do
+  "Admin Area, Access denied!"
+end
+
+# Match on Accept header
+get '/', :provides => 'html' do
+  haml :index
+end
+
+get '/', :provides => ['rss', 'atom', 'xml'] do
+  builder :feed
+end
+```
+
+### Custom conditions
+
+Define reusable conditions with `set`:
+
+```ruby
+set(:probability) { |value| condition { rand <= value } }
+
+get '/win_a_car', :probability => 0.1 do
+  "You won!"
+end
+
+get '/win_a_car' do
+  "Sorry, you lost."
+end
+```
+
+Use a splat in the `set` block to accept multiple values:
+
+```ruby
+set(:auth) do |*roles|
+  condition do
+    unless logged_in? && roles.any? { |role| current_user.in_role? role }
+      redirect "/login/", 303
+    end
+  end
+end
+
+get "/my/account/", :auth => [:user, :admin] do
+  "Your Account Details"
+end
+
+get "/only/admin/", :auth => :admin do
+  "Only admins are allowed here!"
+end
+```
+
+## Return values
+
+The return value of a route block becomes the response body. Sinatra accepts several forms:
+
+| Return value | Meaning |
+|---|---|
+| `String` | Response body with status 200 |
+| `Integer` | HTTP status code |
+| `[status, body]` | Two-element array |
+| `[status, headers, body]` | Three-element array (full Rack response) |
+| Object responding to `#each` | Streaming body |
+
+```ruby
+# Three-element Rack response
+get '/rack' do
+  [200, { 'Content-Type' => 'text/plain' }, ['Hello']]
+end
+
+# Custom streaming object
+class Stream
+  def each
+    100.times { |i| yield "#{i}\n" }
+  end
+end
+
+get('/') { Stream.new }
+```
+
+<Tip>
+Use the `stream` helper (described in Filters and Helpers) rather than defining a custom `#each` object when you want inline streaming logic.
+</Tip>
+
+## Custom route matchers
+
+You can define your own route matcher by implementing `to_pattern` and `params`:
+
+```ruby
+class AllButPattern
+  def initialize(except)
+    @except = except
+  end
+
+  def to_pattern(options)
+    return self
+  end
+
+  def params(route)
+    return {} unless @except === route
+  end
+end
+
+def all_but(pattern)
+  AllButPattern.new(pattern)
+end
+
+get all_but("/index") do
+  # matches everything except /index
+end
+```
+
+<Tip>
+The same result is often simpler with a regex and `pass`:
+
+```ruby
+get /.*/ do
+  pass if request.path_info == "/index"
+  # ...
+end
+```
+</Tip>
+
+## Static files
+
+Static files are served from the `./public` directory. The directory name is not included in the URL — `./public/css/style.css` is available at `/css/style.css`.
+
+To use a different directory:
+
+```ruby
+set :public_folder, __dir__ + '/static'
+```
+
+Add `Cache-Control` headers to all static responses with `:static_cache_control`:
+
+```ruby
+set :static_cache_control, [:public, :max_age => 300]
+```
+
+Add arbitrary custom headers to static responses with `:static_headers`:
+
+```ruby
+set :static_headers, {
+  'access-control-allow-origin' => '*',
+  'x-static-asset' => 'served-by-sinatra'
+}
+```
+
+<Note>
+By default, static files bypass middleware and filters. Use `:static_headers` when you need CORS or custom caching headers on static assets.
+</Note>
+
+## Halting a request
+
+Call `halt` anywhere inside a filter or route to stop processing immediately:
+
+```ruby
+halt                            # empty 200 response
+halt 410                        # status only
+halt 'this will be the body'    # body only
+halt 401, 'go away!'            # status + body
+halt 402, { 'Content-Type' => 'text/plain' }, 'revenge'  # status + headers + body
+halt erb(:error)                # render a template and halt
+```
+
+## Passing to the next route
+
+Use `pass` to abandon the current route block and continue matching:
+
+```ruby
+get '/guess/:who' do
+  pass unless params['who'] == 'Frank'
+  'You got me!'
+end
+
+get '/guess/*' do
+  'You missed!'
+end
+```
+
+If no subsequent route matches, Sinatra returns a 404.
+
+## Triggering another route
+
+Use `call` to invoke a different route and capture its response:
+
+```ruby
+get '/foo' do
+  status, headers, body = call env.merge("PATH_INFO" => '/bar')
+  [status, headers, body.map(&:upcase)]
+end
+
+get '/bar' do
+  "bar"
+end
+```
+
+Use `call!` instead of `call` to dispatch to the same application instance rather than a duplicate.
+
+## Setting body, status, and headers explicitly
+
+You can set response components at any point in the execution flow:
+
+```ruby
+get '/foo' do
+  status 418
+  headers \
+    "Allow"   => "BREW, POST, GET, PROPFIND, WHEN",
+    "Refresh" => "Refresh: 20; https://ietf.org/rfc/rfc2324.txt"
+  body "I'm a teapot!"
+end
+```
+
+Called without arguments, `body`, `status`, and `headers` return the current values. This makes them accessible in after filters:
+
+```ruby
+get '/foo' do
+  body "bar"
+end
+
+after do
+  puts body
+end
+```

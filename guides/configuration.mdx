@@ -1,0 +1,307 @@
+---
+title: "Configuration"
+description: "Configure Sinatra with settings, environments, and lifecycle events"
+---
+
+## The `configure` block
+
+Use `configure do ... end` to run setup code once at startup, in any environment:
+
+```ruby
+configure do
+  # setting one option
+  set :option, 'value'
+
+  # setting multiple options at once
+  set :a => 1, :b => 2
+
+  # same as `set :option, true`
+  enable :option
+
+  # same as `set :option, false`
+  disable :option
+
+  # dynamic settings with blocks
+  set(:css_dir) { File.join(views, 'css') }
+end
+```
+
+To run configuration only in a specific environment, pass one or more environment names:
+
+```ruby
+configure :production do
+  # runs only in production
+end
+
+configure :production, :test do
+  # runs in production and test
+end
+```
+
+## Accessing settings
+
+Options set with `set` are available anywhere via `settings`:
+
+```ruby
+configure do
+  set :foo, 'bar'
+end
+
+get '/' do
+  settings.foo?  # => true
+  settings.foo   # => 'bar'
+end
+```
+
+## Environments
+
+Sinatra has three predefined environments: `development`, `production`, and `test`. The active environment is controlled by the `APP_ENV` environment variable. It defaults to `development`.
+
+```bash
+APP_ENV=production ruby my_app.rb
+```
+
+Use the predefined predicate methods to branch on the current environment:
+
+```ruby
+get '/' do
+  if settings.development?
+    "development!"
+  else
+    "not development!"
+  end
+end
+```
+
+The three predicates are `development?`, `test?`, and `production?`.
+
+**Behavior by environment:**
+
+- **development** — templates reload between requests; `not_found` and `error` handlers show stack traces in the browser.
+- **production** and **test** — templates are cached by default.
+
+## Lifecycle events
+
+Sinatra exposes two lifecycle callbacks that run when the built-in web server starts and stops:
+
+```ruby
+on_start do
+  puts "===== Booting up ====="
+end
+
+on_stop do
+  puts "===== Shutting down ====="
+end
+```
+
+<Note>
+  These callbacks only fire when Sinatra is managing the web server directly (i.e., not when using `rackup` or another external server runner).
+</Note>
+
+## Configuring attack protection
+
+Sinatra uses [Rack::Protection](https://github.com/sinatra/sinatra/tree/main/rack-protection#readme) by default. You can adjust or disable it through the `:protection` setting.
+
+Disable all protections (not recommended):
+
+```ruby
+disable :protection
+```
+
+Disable a single protection layer:
+
+```ruby
+set :protection, :except => :path_traversal
+```
+
+Disable multiple protection layers:
+
+```ruby
+set :protection, :except => [:path_traversal, :remote_token]
+```
+
+Enable session-based protection without calling `enable :sessions`:
+
+```ruby
+set :protection, :session => true
+```
+
+## Available settings
+
+<AccordionGroup>
+  <Accordion title="absolute_redirects">
+    When disabled, Sinatra allows relative redirects. Note that this makes the app non-conformant with RFC 2616 (HTTP 1.1), which requires absolute redirects.
+
+    Enable this if your app runs behind a reverse proxy that is not configured to rewrite redirect URLs. The `url` helper always produces absolute URLs unless you explicitly pass `false` as its second argument.
+
+    Disabled by default.
+  </Accordion>
+
+  <Accordion title="add_charset">
+    A list of MIME types for which the `content_type` helper automatically appends charset information. Append to this list rather than replacing it:
+
+    ```ruby
+    settings.add_charset << "application/foobar"
+    ```
+  </Accordion>
+
+  <Accordion title="app_file">
+    Path to the main application file. Sinatra uses this to detect the project root, views folder, public folder, and inline templates.
+  </Accordion>
+
+  <Accordion title="bind">
+    IP address to bind to. Defaults to `0.0.0.0`, or `localhost` when the environment is `development`. Only used by the built-in server.
+  </Accordion>
+
+  <Accordion title="default_content_type">
+    Content-Type to use when the type is unknown. Defaults to `"text/html"`. Set to `nil` to suppress a default Content-Type header, in which case you must set it manually or the user-agent will have to sniff it.
+  </Accordion>
+
+  <Accordion title="default_encoding">
+    Character encoding to assume when unknown. Defaults to `"utf-8"`.
+  </Accordion>
+
+  <Accordion title="dump_errors">
+    When enabled, errors are printed to the log. Enabled by default in all environments except `test`.
+  </Accordion>
+
+  <Accordion title="environment">
+    The current environment. Defaults to `ENV['APP_ENV']`, or `"development"` if that variable is not set.
+
+    ```bash
+    APP_ENV=production ruby my_app.rb
+    ```
+  </Accordion>
+
+  <Accordion title="host_authorization">
+    A hash of options passed to `Rack::Protection::HostAuthorization`. This middleware blocks requests with unrecognized hostnames to prevent DNS rebinding and host header attacks. It inspects the `Host`, `X-Forwarded-Host`, and `Forwarded` headers.
+
+    Supported options:
+
+    - **`permitted_hosts`** — array of allowed hostnames or `IPAddr` objects. In `development`, defaults to `.localhost`, `.test`, and any IPv4/IPv6 address. If empty, all hostnames are permitted (the default for other environments).
+    - **`status`** — HTTP status code returned when a request is blocked. Defaults to `403`.
+    - **`message`** — response body when a request is blocked. Defaults to `"Host not permitted"`.
+    - **`allow_if`** — a `Proc` for custom allow/deny logic. The proc receives the Rack environment.
+
+    ```ruby
+    set :host_authorization, {
+      permitted_hosts: ['example.com', 'www.example.com'],
+      status: 403,
+      message: 'Host not permitted'
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="logging">
+    Enable the Rack logger middleware.
+  </Accordion>
+
+  <Accordion title="lock">
+    Places a mutex lock around every request so only one request is processed at a time per Ruby process. Enable this if your app is not thread-safe. Disabled by default.
+  </Accordion>
+
+  <Accordion title="method_override">
+    Enables the `_method` parameter trick to support `PUT` and `DELETE` form submissions in browsers that only support `GET` and `POST`.
+  </Accordion>
+
+  <Accordion title="mustermann_opts">
+    A default hash of options passed to `Mustermann.new` when compiling route patterns.
+  </Accordion>
+
+  <Accordion title="port">
+    Port for the built-in server to listen on. Only used by the built-in server.
+  </Accordion>
+
+  <Accordion title="prefixed_redirects">
+    When enabled, `request.script_name` is prepended to redirects that use a relative path, so `redirect '/foo'` behaves like `redirect to('/foo')`. Disabled by default.
+  </Accordion>
+
+  <Accordion title="protection">
+    Controls web attack protection via Rack::Protection. See the [configuring attack protection](#configuring-attack-protection) section above.
+  </Accordion>
+
+  <Accordion title="public_folder / public_dir">
+    Path to the folder from which static files are served. `public_dir` is an alias for `public_folder`. Only used when static file serving is enabled. Inferred from `app_file` if not set.
+  </Accordion>
+
+  <Accordion title="quiet">
+    Disables the startup and shutdown log messages printed by Sinatra. `false` by default.
+  </Accordion>
+
+  <Accordion title="reload_templates">
+    When enabled, templates are reloaded between requests. Enabled automatically in `development` mode.
+  </Accordion>
+
+  <Accordion title="root">
+    Path to the project root folder. Inferred from `app_file` if not set.
+  </Accordion>
+
+  <Accordion title="raise_errors">
+    When enabled, unhandled errors are raised outside the application (stopping it). Enabled by default in the `test` environment, disabled otherwise.
+
+    Explicitly defined error handlers always take effect regardless of this setting. See the [error handling guide](/guides/error-handling) for details.
+  </Accordion>
+
+  <Accordion title="run / running">
+    `run` — when enabled, Sinatra starts the built-in web server. Do not enable when using `rackup` or another server runner.
+
+    `running` — read-only indicator of whether the built-in server is active. Do not modify this setting.
+  </Accordion>
+
+  <Accordion title="server / server_settings">
+    `server` — the server backend (or ordered list of backends) for the built-in server. Default depends on the Ruby implementation.
+
+    `server_settings` — a hash of options (such as `Host` or `Port`) passed directly to the server backend.
+  </Accordion>
+
+  <Accordion title="sessions / session_store">
+    `sessions` — enables cookie-based sessions via `Rack::Session::Cookie`. See the [sessions and security guide](/guides/sessions-and-security).
+
+    `session_store` — the Rack session middleware to use. Defaults to `Rack::Session::Cookie`.
+  </Accordion>
+
+  <Accordion title="show_exceptions">
+    When enabled, displays a browser-rendered stack trace when an exception occurs. Enabled by default in `development`, disabled otherwise.
+
+    Can also be set to `:after_handler` to run your app's error handlers before showing the stack trace:
+
+    ```ruby
+    set :show_exceptions, :after_handler
+    ```
+  </Accordion>
+
+  <Accordion title="static / static_cache_control / static_headers">
+    `static` — controls whether Sinatra serves static files from `public_folder`. Enabled by default in classic-style apps, disabled in modular apps. Disable when your web server handles static files directly.
+
+    `static_cache_control` — adds `Cache-Control` headers to static file responses. Uses the `cache_control` helper. Disabled by default.
+
+    ```ruby
+    set :static_cache_control, [:public, :max_age => 300]
+    ```
+
+    `static_headers` — a hash of custom headers added to all static file responses.
+
+    ```ruby
+    set :static_headers, {
+      'access-control-allow-origin' => '*',
+      'x-static-asset' => 'served-by-sinatra'
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="threaded">
+    When `true`, instructs the server to use `EventMachine.defer` for processing requests.
+  </Accordion>
+
+  <Accordion title="traps">
+    Controls whether Sinatra installs handlers for OS signals (e.g., `SIGTERM`).
+  </Accordion>
+
+  <Accordion title="views">
+    Path to the views folder. Inferred from `app_file` if not set.
+  </Accordion>
+
+  <Accordion title="x_cascade">
+    When enabled, Sinatra sets the `X-Cascade: pass` header when no route matches, signaling upstream middleware to try the next app. Defaults to `true`.
+  </Accordion>
+</AccordionGroup>

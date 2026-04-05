@@ -1,0 +1,112 @@
+---
+title: "Rack middleware"
+description: "Add Rack middleware to your Sinatra application"
+---
+
+Sinatra is built on [Rack](https://rack.github.io/), a minimal standard interface for Ruby web frameworks. One of Rack's most useful capabilities for application developers is support for "middleware" — components that sit between the server and your application, monitoring and/or manipulating the HTTP request/response to provide various types of common functionality.
+
+## Adding middleware with `use`
+
+Sinatra makes building Rack middleware pipelines straightforward via the top-level `use` method:
+
+```ruby
+require 'sinatra'
+require 'my_custom_middleware'
+
+use Rack::Lint
+use MyCustomMiddleware
+
+get '/hello' do
+  'Hello World'
+end
+```
+
+The semantics of `use` are identical to those defined for the [`Rack::Builder`](https://www.rubydoc.info/github/rack/rack/main/Rack/Builder) DSL, which is most frequently used from rackup files. The `use` method accepts multiple arguments as well as blocks:
+
+```ruby
+use Rack::Auth::Basic do |username, password|
+  username == 'admin' && password == 'secret'
+end
+```
+
+## Auto-configured middleware
+
+Rack is distributed with a variety of standard middleware for logging, debugging, URL routing, authentication, and session handling. Sinatra uses many of these components automatically based on your configuration, so you typically don't have to `use` them explicitly.
+
+## Finding middleware
+
+You can find useful middleware in:
+
+- [`rack/rack`](https://github.com/rack/rack/tree/main/lib/rack) — standard middleware bundled with Rack
+- [`rack/rack-contrib`](https://github.com/rack/rack-contrib#readme) — community-contributed middleware
+- The [Rack wiki list of middleware](https://github.com/rack/rack/wiki/List-of-Middleware)
+
+## Sinatra as Rack middleware
+
+Not only can Sinatra use other Rack middleware — any Sinatra application can itself be added as middleware in front of any Rack endpoint. This endpoint could be another Sinatra app, a Rails app, a Hanami app, or any other Rack-based application.
+
+The example below uses a `LoginScreen` Sinatra app as middleware to protect a main `MyApp` application:
+
+```ruby
+require 'sinatra/base'
+
+class LoginScreen < Sinatra::Base
+  enable :sessions
+
+  get('/login') { haml :login }
+
+  post('/login') do
+    if params['name'] == 'admin' && params['password'] == 'admin'
+      session['user_name'] = params['name']
+    else
+      redirect '/login'
+    end
+  end
+end
+
+class MyApp < Sinatra::Base
+  # middleware will run before filters
+  use LoginScreen
+
+  before do
+    unless session['user_name']
+      halt "Access denied, please <a href='/login'>login</a>."
+    end
+  end
+
+  get('/') { "Hello #{session['user_name']}." }
+end
+```
+
+You can also use `Sinatra.new` to mount a Sinatra app inline as middleware in `config.ru`:
+
+```ruby
+# config.ru
+require 'sinatra/base'
+
+use Sinatra do
+  get('/') { ... }
+end
+
+run RailsProject::Application
+```
+
+## call vs call!
+
+When triggering another route from within a route block, use `call` or `call!`:
+
+```ruby
+get '/foo' do
+  status, headers, body = call env.merge("PATH_INFO" => '/bar')
+  [status, headers, body.map(&:upcase)]
+end
+
+get '/bar' do
+  "bar"
+end
+```
+
+- `call` — sends the request to a **new instance** of your application.
+- `call!` — sends the request to the **same application instance**, avoiding duplication of per-instance state.
+
+Use `call!` when you want the request to be processed by the same application instance rather than a fresh duplicate.

@@ -1,0 +1,104 @@
+---
+title: "Introduction"
+description: "What is Sinatra and why use it for Ruby web development"
+keywords: ["sinatra", "ruby", "web framework", "dsl", "rack", "microservice", "api"]
+---
+
+Sinatra is a [DSL](https://en.wikipedia.org/wiki/Domain-specific_language) for quickly creating web applications in Ruby with minimal effort. It sits on top of [Rack](https://github.com/rack/rack), the standard Ruby web server interface, and gives you a clean, expressive syntax for defining routes, rendering templates, and handling HTTP without the overhead of a full-stack framework.
+
+```ruby
+require 'sinatra'
+
+get '/hello/:name' do
+  "Hello, #{params['name']}!"
+end
+```
+
+<Note>
+  Rack is the foundation Sinatra is built on. Every Sinatra application is a valid Rack application, which means you can mount it inside Rails, use it as middleware, or run it with any Rack-compatible server such as Puma, Unicorn, or Passenger.
+</Note>
+
+## Current version
+
+Sinatra **4.2.1** is the current stable release. It follows [Semantic Versioning](https://semver.org/) (SemVer). Ruby >= 2.7.8 is required.
+
+## Classic vs modular style
+
+Sinatra offers two ways to structure an application.
+
+**Classic style** is the simplest approach. You `require 'sinatra'` and define routes at the top level. Sinatra automatically mixes its DSL into the main namespace. This is ideal for small scripts and single-file applications.
+
+```ruby
+# myapp.rb — classic style
+require 'sinatra'
+
+get '/' do
+  'Hello world!'
+end
+```
+
+**Modular style** uses `require 'sinatra/base'` and subclasses `Sinatra::Base`. This keeps Sinatra out of the global namespace and lets you run multiple Sinatra apps in a single process. It is the right choice for libraries, middleware, and larger applications.
+
+```ruby
+# myapp.rb — modular style
+require 'sinatra/base'
+
+class MyApp < Sinatra::Base
+  get '/' do
+    'Hello world!'
+  end
+
+  run! if app_file == $0
+end
+```
+
+The two styles share the same DSL methods. Switching between them requires only a change to the require statement and, for modular style, wrapping your routes in a class.
+
+## Key capabilities
+
+**Routing** — Routes are HTTP method and URL pattern pairs. Sinatra matches them in definition order and supports named parameters, splat wildcards, regular expressions, and optional segments. Route matching is powered by [Mustermann](https://github.com/sinatra/mustermann).
+
+**Templates** — Sinatra integrates with [Tilt](https://github.com/rtomayko/tilt), giving you access to over a dozen template engines including ERB, Haml, Slim, Liquid, Markdown, and more. Templates live in the `views/` directory by default.
+
+**Middleware** — Because every Sinatra app is a Rack app, you can use `use` to stack any Rack middleware. You can also run a Sinatra app _as_ middleware in front of another Rack endpoint.
+
+**Extensions** — [sinatra-contrib](https://github.com/sinatra/sinatra/tree/main/sinatra-contrib) provides first-party extensions for JSON responses, namespaced routes, auto-reloading, streaming helpers, and more.
+
+## Key dependencies
+
+| Gem | Version | Purpose |
+|-----|---------|---------|
+| `mustermann` | `~> 3.0` | Route pattern matching |
+| `rack` | `>= 3.0.0, < 4` | Web server interface |
+| `rack-protection` | same as sinatra | Security middleware (CSRF, XSS, etc.) |
+| `rack-session` | `>= 2.0.0, < 3` | Session management |
+| `tilt` | `~> 2.0` | Template engine abstraction |
+
+## When to use Sinatra
+
+Sinatra is a strong fit when you want:
+
+- A **REST API or JSON service** with minimal boilerplate
+- A **microservice** that needs to stay small and independently deployable
+- A **small-to-medium web application** where Rails would be overkill
+- **Rack middleware** that handles a subset of routes before passing to another app
+- A **library with a web interface** that shouldn't impose a full framework on its users
+
+If you need a full MVC stack, asset pipeline, ORM integration, or convention-heavy project structure out of the box, a framework like Rails or Hanami may be a better starting point.
+
+## Explore Sinatra
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get a Sinatra app running in minutes with a step-by-step example.
+  </Card>
+  <Card title="Routes" icon="route" href="/guides/routes">
+    Define HTTP routes with named params, wildcards, and conditions.
+  </Card>
+  <Card title="Templates" icon="layer-group" href="/guides/templates">
+    Render ERB, Haml, Slim, Markdown, and 10+ other template engines.
+  </Card>
+  <Card title="Modular apps" icon="cubes" href="/guides/modular-apps">
+    Use Sinatra::Base for middleware, libraries, and larger applications.
+  </Card>
+</CardGroup>

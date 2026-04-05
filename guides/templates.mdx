@@ -1,0 +1,464 @@
+---
+title: "Templates"
+description: "Render views using ERB, Haml, Slim, Markdown, and 14+ template engines"
+---
+
+Each template language in Sinatra is exposed via its own rendering method. These methods return a string that becomes the response body.
+
+## Basic rendering
+
+Call the rendering method with a symbol matching the view filename (without extension):
+
+```ruby
+get '/' do
+  erb :index   # renders views/index.erb
+end
+```
+
+You can also pass a template string directly instead of a symbol:
+
+```ruby
+get '/' do
+  code = "<%= Time.now %>"
+  erb code
+end
+```
+
+<Note>
+Always reference templates with symbols, even for subdirectory paths: `:'subdir/template'` or `'subdir/template'.to_sym`. Passing a plain string renders it as a literal template, not a file lookup.
+</Note>
+
+## Template options
+
+Pass an options hash as the second argument to any rendering method:
+
+```ruby
+get '/' do
+  erb :index, :layout => :post
+  # renders views/index.erb inside views/post.erb
+end
+```
+
+| Option | Description |
+|---|---|
+| `:locals` | Hash of local variables passed to the template. Useful for partials. |
+| `:layout` | `true`/`false` to enable/disable layout, or a symbol naming the layout template. |
+| `:content_type` | Content-Type the template produces. Default depends on the engine. |
+| `:scope` | Object under which the template is evaluated. Defaults to the app instance. Changing this makes instance variables and helpers unavailable. |
+| `:layout_engine` | Template engine to use for the layout. Useful for engines that do not support layouts. |
+| `:layout_options` | Options hash passed only to the layout renderer. |
+| `:views` | Views folder to load the template from. Defaults to `settings.views`. |
+| `:default_encoding` | String encoding to use when uncertain. Defaults to `settings.default_encoding`. |
+
+Example using several options:
+
+```ruby
+get '/' do
+  erb :index, :layout => !request.xhr?, :locals => { :user => current_user }
+end
+```
+
+You can set options for an entire engine with `set`, and override them per-call:
+
+```ruby
+set :haml, :format => :html5
+
+get '/' do
+  haml :index                          # uses :html5
+  haml :index, :format => :xhtml       # overrides to :xhtml for this call
+end
+```
+
+## Views directory
+
+Templates are loaded from `./views` by default. Change it with:
+
+```ruby
+set :views, settings.root + '/templates'
+```
+
+To use per-engine directories, override `find_template` (see [Custom template lookup](#custom-template-lookup)).
+
+## Literal templates
+
+Pass a string instead of a symbol to render inline content:
+
+```ruby
+get '/' do
+  haml '%div.title Hello World'
+end
+```
+
+Provide `:path` and `:line` for clearer backtraces:
+
+```ruby
+get '/' do
+  haml '%div.title Hello World', :path => 'examples/file.haml', :line => 3
+end
+```
+
+## Available template languages
+
+<AccordionGroup>
+  <Accordion title="Haml">
+    **Dependency:** `haml` gem  
+    **File extension:** `.haml`
+
+    ```ruby
+    get '/' do
+      haml :index, :format => :html5
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="ERB">
+    **Dependency:** Built into Ruby (`erb`) or the `erubi` gem  
+    **File extensions:** `.erb`, `.rhtml`, `.erubi` (Erubi only)
+
+    ```ruby
+    get '/' do
+      erb :index
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="Builder">
+    **Dependency:** `builder` gem  
+    **File extension:** `.builder`
+
+    ```ruby
+    get '/feed' do
+      builder do |xml|
+        xml.em "hi"
+      end
+    end
+    ```
+
+    Also accepts a block for inline templates.
+  </Accordion>
+
+  <Accordion title="Nokogiri">
+    **Dependency:** `nokogiri` gem  
+    **File extension:** `.nokogiri`
+
+    ```ruby
+    get '/feed' do
+      nokogiri do |xml|
+        xml.em "hi"
+      end
+    end
+    ```
+
+    Also accepts a block for inline templates.
+  </Accordion>
+
+  <Accordion title="Sass / SCSS">
+    **Dependency:** `sass-embedded` gem  
+    **File extensions:** `.sass` (Sass), `.scss` (SCSS)
+
+    ```ruby
+    get '/stylesheet.css' do
+      sass :stylesheet, :style => :expanded
+    end
+
+    get '/other.css' do
+      scss :stylesheet, :style => :expanded
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="Liquid">
+    **Dependency:** `liquid` gem  
+    **File extension:** `.liquid`
+
+    ```ruby
+    get '/' do
+      liquid :index, :locals => { :key => 'value' }
+    end
+    ```
+
+    <Note>
+    You cannot call Ruby methods (except `yield`) from a Liquid template. Always pass data via `:locals`.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Markdown">
+    **Dependency:** One of `rdiscount`, `redcarpet`, `kramdown`, `commonmarker`, or `pandoc-ruby`  
+    **File extensions:** `.markdown`, `.mkd`, `.md`
+
+    ```ruby
+    require 'rdiscount'
+
+    get '/' do
+      markdown :index, :layout_engine => :erb
+    end
+    ```
+
+    Because Markdown cannot call Ruby methods or use layouts written in Markdown, combine it with another engine:
+
+    ```ruby
+    get '/' do
+      erb :overview, :locals => { :text => markdown(:introduction) }
+    end
+    ```
+
+    You can also call `markdown` from inside other templates:
+
+    ```haml
+    %h1 Hello From Haml!
+    %p= markdown(:greetings)
+    ```
+  </Accordion>
+
+  <Accordion title="RDoc">
+    **Dependency:** `rdoc` gem  
+    **File extension:** `.rdoc`
+
+    ```ruby
+    get '/' do
+      rdoc :README, :layout_engine => :erb
+    end
+    ```
+
+    <Note>
+    RDoc cannot call Ruby methods or use RDoc layouts. Combine with another engine the same way as Markdown.
+    </Note>
+  </Accordion>
+
+  <Accordion title="AsciiDoc">
+    **Dependency:** `asciidoctor` gem  
+    **File extensions:** `.asciidoc`, `.adoc`, `.ad`
+
+    ```ruby
+    get '/' do
+      asciidoc :README, :layout_engine => :erb
+    end
+    ```
+
+    <Note>
+    AsciiDoc cannot call Ruby methods directly. Pass data via `:locals`.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Markaby">
+    **Dependency:** `markaby` gem  
+    **File extension:** `.mab`
+
+    ```ruby
+    get '/' do
+      markaby { h1 "Welcome!" }
+    end
+    ```
+
+    Also accepts a block for inline templates.
+  </Accordion>
+
+  <Accordion title="RABL">
+    **Dependency:** `rabl` gem  
+    **File extension:** `.rabl`
+
+    ```ruby
+    get '/users' do
+      rabl :index
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="Slim">
+    **Dependency:** `slim` gem  
+    **File extension:** `.slim`
+
+    ```ruby
+    get '/' do
+      slim :index
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="Yajl">
+    **Dependency:** `yajl-ruby` gem  
+    **File extension:** `.yajl`
+
+    The template source is evaluated as Ruby, and the resulting `json` variable is serialised via `#to_json`:
+
+    ```ruby
+    # views/index.yajl
+    # json = { :foo => 'bar' }
+    # json[:baz] = key
+
+    get '/' do
+      yajl :index,
+           :locals   => { :key => 'qux' },
+           :callback => 'present',
+           :variable => 'resource'
+    end
+    ```
+
+    With `:callback` and `:variable`, the output is wrapped:
+
+    ```javascript
+    var resource = {"foo":"bar","baz":"qux"};
+    present(resource);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Accessing instance variables in templates
+
+Templates run in the same context as the route handler. Instance variables set in the route are directly accessible inside the template:
+
+```ruby
+get '/:id' do
+  @foo = Foo.find(params['id'])
+  haml '%h1= @foo.name'
+end
+```
+
+To pass data more explicitly, use `:locals` (common for partials):
+
+```ruby
+get '/:id' do
+  foo = Foo.find(params['id'])
+  haml '%h1= bar.name', :locals => { :bar => foo }
+end
+```
+
+## Templates with `yield` and nested layouts
+
+A layout is a template that calls `yield` where the inner content should appear. You can nest layouts by passing a block to the rendering method:
+
+```ruby
+# equivalent to: erb :index, :layout => :post
+erb :post, :layout => false do
+  erb :index
+end
+```
+
+Nested layouts:
+
+```ruby
+erb :main_layout, :layout => false do
+  erb :admin_layout do
+    erb :user
+  end
+end
+
+# shorter form:
+erb :admin_layout, :layout => :main_layout do
+  erb :user
+end
+```
+
+<Note>
+Blocks are accepted by `erb`, `haml`, `liquid`, `slim`, and the generic `render` method.
+</Note>
+
+## Inline templates
+
+Define templates at the bottom of your source file after `__END__`, using `@@` markers:
+
+```ruby
+require 'sinatra'
+
+get '/' do
+  haml :index
+end
+
+__END__
+
+@@ layout
+%html
+  != yield
+
+@@ index
+%div.title Hello world.
+```
+
+<Note>
+Inline templates in the file that `require`s Sinatra are loaded automatically. For inline templates in other source files, call `enable :inline_templates` explicitly.
+</Note>
+
+## Named templates
+
+Use the top-level `template` method to define templates in Ruby code:
+
+```ruby
+template :layout do
+  "%html\n  =yield\n"
+end
+
+template :index do
+  '%div.title Hello World!'
+end
+
+get '/' do
+  haml :index
+end
+```
+
+If a template named `layout` exists, it is used for every render unless disabled:
+
+```ruby
+get '/' do
+  haml :index, :layout => !request.xhr?
+end
+```
+
+## Associating file extensions
+
+Register a custom file extension with an existing engine using `Tilt.register`:
+
+```ruby
+# treat .tt files as Haml
+Tilt.register Tilt[:haml], :tt
+```
+
+## Adding your own template engine
+
+Register the engine with Tilt, then create a rendering method via `helpers`:
+
+```ruby
+Tilt.register MyAwesomeTemplateEngine, :myat
+
+helpers do
+  def myat(*args) render(:myat, *args) end
+end
+
+get '/' do
+  myat :index   # renders ./views/index.myat
+end
+```
+
+## Custom template lookup
+
+Override `find_template` to implement your own lookup logic — for example, searching multiple view directories:
+
+```ruby
+configure do
+  set :views, ['./views/a', './views/b']
+end
+
+def find_template(views, name, engine, &block)
+  Array(views).each do |v|
+    super(v, name, engine, &block)
+  end
+end
+```
+
+You can also route different engines to different directories:
+
+```ruby
+set :views, :haml => 'templates', :default => 'views'
+
+helpers do
+  def find_template(views, name, engine, &block)
+    _, folder = views.detect { |k, v| engine == Tilt[k] }
+    folder ||= views[:default]
+    super(folder, name, engine, &block)
+  end
+end
+```
+
+<Tip>
+`find_template` does not verify that a file exists; it yields all candidate paths and lets `render` stop at the first match. Template paths are cached outside of development mode.
+</Tip>

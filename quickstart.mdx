@@ -1,80 +1,107 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Build and run your first Sinatra application in minutes"
+keywords: ["sinatra", "quickstart", "getting started", "ruby", "web app", "hello world"]
 ---
 
-## Get started in three steps
+This guide walks you through creating and running a minimal Sinatra application. You will have a working web server responding to HTTP requests in under five minutes.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Install the gems">
+    You need Sinatra, a Rack-compatible server (Puma), and the `rackup` command-line tool. Install all three with a single command:
 
-### Step 1: Set up your local environment
+    ```bash
+    gem install sinatra rackup puma
+    ```
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    - **sinatra** — the framework itself
+    - **puma** — a fast, concurrent web server
+    - **rackup** — the CLI tool for starting Rack applications
+  </Step>
 
-### Step 2: Deploy your changes
+  <Step title="Create your app file">
+    Create a file called `myapp.rb` with the following content:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```ruby myapp.rb
+    require 'sinatra'
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    # Respond to GET /
+    get '/' do
+      'Hello world!'
+    end
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    # Respond to GET /hello/:name with a named parameter
+    get '/hello/:name' do
+      # params['name'] captures the value from the URL segment
+      "Hello, #{params['name']}!"
+    end
+    ```
 
-### Step 3: Go live
+    Routes in Sinatra are HTTP method and URL pattern pairs. Each route is a block that returns the response body as a string. Named parameters like `:name` are accessible via `params['name']`.
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    You can also access named parameters directly as block arguments:
 
-## Next steps
+    ```ruby
+    get '/hello/:name' do |name|
+      "Hello, #{name}!"
+    end
+    ```
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Run the app">
+    Start the server by running the file with Ruby:
 
-<CardGroup cols={2}>
+    ```bash
+    ruby myapp.rb
+    ```
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+    You should see output similar to:
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    ```
+    == Sinatra (v4.2.1) has taken the stage on 4567 for development with backup from Puma
+    Puma starting in single mode...
+    * Listening on http://0.0.0.0:4567
+    ```
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+    <Note>
+      Code changes do not take effect until you restart the server. Stop the process with `Ctrl+C` and run `ruby myapp.rb` again after making edits.
+    </Note>
+  </Step>
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+  <Step title="Open your app in a browser">
+    Visit the following URLs to see your routes in action:
 
-</CardGroup>
+    | URL | Response |
+    |-----|----------|
+    | `http://localhost:4567/` | `Hello world!` |
+    | `http://localhost:4567/hello/alice` | `Hello, alice!` |
+    | `http://localhost:4567/hello/world` | `Hello, world!` |
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+    You can also test with `curl`:
+
+    ```bash
+    curl http://localhost:4567/hello/alice
+    # => Hello, alice!
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Restarting the server on every change gets tedious quickly. Use [rerun](https://github.com/alexch/rerun) or [rack-unreloader](https://github.com/jeremyevans/rack-unreloader) to automatically reload your app when files change.
+
+  ```bash
+  gem install rerun
+  rerun ruby myapp.rb
+  ```
+</Tip>
+
+## What's next
+
+Now that you have a working app, explore the rest of the framework:
+
+- Add more HTTP verbs: `post`, `put`, `patch`, `delete`
+- Render templates with `erb :index` or `haml :index`
+- Use `before` and `after` filters to run code around every request
+- Switch to modular style with `Sinatra::Base` for larger applications
+
+See [Routes](/guides/routes) for a full reference on route patterns, conditions, and return values.

@@ -1,0 +1,133 @@
+---
+title: "Error Handling"
+description: "Handle 404s, exceptions, status codes, and custom error responses"
+---
+
+Error handlers run in the same context as routes and before-filters, so helpers like `haml`, `erb`, and `halt` are all available inside them.
+
+## Handling 404s
+
+When a `Sinatra::NotFound` exception is raised, or the response status code is `404`, the `not_found` handler is invoked:
+
+```ruby
+not_found do
+  'This is nowhere to be found.'
+end
+```
+
+## Catch-all error handler
+
+The `error` handler is invoked any time an exception is raised from a route block or a filter:
+
+```ruby
+error do
+  'Sorry there was a nasty error'
+end
+```
+
+Access the exception object through the `sinatra.error` Rack variable:
+
+```ruby
+error do
+  'Sorry there was a nasty error - ' + env['sinatra.error'].message
+end
+```
+
+<Note>
+  In development mode, Sinatra installs its own `not_found` and `error` handlers that display nicely formatted stack traces and debugging information in the browser. To see your own handler during development, set `show_exceptions` to `:after_handler`:
+
+  ```ruby
+  set :show_exceptions, :after_handler
+  ```
+</Note>
+
+## Custom error class handlers
+
+Pass an error class to `error` to handle a specific exception type:
+
+```ruby
+error MyCustomError do
+  'So what happened was...' + env['sinatra.error'].message
+end
+```
+
+When the error is raised in a route:
+
+```ruby
+get '/' do
+  raise MyCustomError, 'something bad'
+end
+```
+
+The response body will be:
+
+```
+So what happened was... something bad
+```
+
+## Status code handlers
+
+Register a handler for a specific HTTP status code:
+
+```ruby
+error 403 do
+  'Access forbidden'
+end
+
+get '/secret' do
+  403
+end
+```
+
+Or handle an entire range of status codes:
+
+```ruby
+error 400..510 do
+  'Boom'
+end
+```
+
+## Using templates in error handlers
+
+Because error handlers share the same context as routes, you can render templates directly:
+
+```ruby
+error 500 do
+  halt erb(:error)
+end
+```
+
+## The `raise_errors` option
+
+The `raise_errors` setting controls what happens when an error is not matched by a specific (non-catch-all) handler.
+
+Given this configuration:
+
+```ruby
+# Specific handler
+error MyCustomError do
+  'A custom message'
+end
+
+# Catch-all handler
+error do
+  'A catch-all message'
+end
+```
+
+**When `raise_errors` is `false`:**
+
+- Raising `MyCustomError` invokes the first handler. The response body is `"A custom message"`.
+- Raising any other error invokes the catch-all handler. The response body is `"A catch-all message"`.
+
+**When `raise_errors` is `true`:**
+
+- Raising `MyCustomError` still invokes the first handler — specific handlers are unaffected.
+- Raising any other error bypasses the catch-all handler and raises the error outside the application:
+  - In `production`, the response body is a generic message such as `"An unhandled lowlevel error occurred. The application logs may have details."`
+  - In other environments, the response body contains the full error backtrace.
+  - If `show_exceptions` is `:after_handler`, the verbose backtrace is always shown regardless of environment.
+
+<Warning>
+  In the `test` environment, `raise_errors` is `true` by default. If you want to test a catch-all error handler, you must temporarily set `raise_errors` to `false` for that specific test, otherwise the catch-all will never be reached.
+</Warning>

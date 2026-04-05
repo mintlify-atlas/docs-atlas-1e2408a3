@@ -1,0 +1,90 @@
+{
+  "projectType": "framework",
+  "projectName": "Sinatra",
+  "projectDescription": "A minimal Ruby DSL for quickly building web applications and APIs with routing, templates, middleware, and extensions.",
+  "theme": "palm",
+  "primaryColor": "#6c6464",
+  "lightColor": "#413f40",
+  "darkColor": "#d4d0c7",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "guides/routes",
+              "guides/templates",
+              "guides/filters-and-helpers"
+            ]
+          },
+          {
+            "group": "Application",
+            "pages": [
+              "guides/configuration",
+              "guides/error-handling",
+              "guides/sessions-and-security"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "guides/modular-apps",
+              "guides/rack-middleware",
+              "guides/testing",
+              "guides/deployment"
+            ]
+          },
+          {
+            "group": "Extensions",
+            "pages": [
+              "extensions/sinatra-contrib",
+              "extensions/rack-protection"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Expressive routing DSL with HTTP method support (GET, POST, PUT, PATCH, DELETE, OPTIONS)",
+    "Named, splat, and regex route parameters",
+    "Route conditions for user-agent, host, and custom matchers",
+    "14+ template engine integrations via Tilt (ERB, Haml, Slim, Markdown, etc.)",
+    "Before/after filters with pattern matching",
+    "Session management with HMAC-SHA1 signing",
+    "Streaming responses and Server-Sent Events",
+    "Built-in Rack::Protection security middleware",
+    "Classic (top-level DSL) and Modular (Sinatra::Base subclass) application styles",
+    "Sinatra as Rack middleware in other frameworks",
+    "Lifecycle events (on_start, on_stop)",
+    "Sinatra-contrib extensions (JSON helpers, namespacing, reloader, etc.)"
+  ],
+  "publicApiSurface": [
+    "get/post/put/patch/delete/options/link/unlink (route methods)",
+    "before/after (filters)",
+    "helpers (helper method definitions)",
+    "configure/set/enable/disable (configuration)",
+    "use (Rack middleware)",
+    "halt/pass/redirect (flow control)",
+    "stream (streaming responses)",
+    "send_file/attachment (file responses)",
+    "cache_control/etag/expires/last_modified (HTTP caching)",
+    "session (session management)",
+    "logger (logging helper)",
+    "not_found/error (error handlers)",
+    "on_start/on_stop (lifecycle events)",
+    "Sinatra::Base (modular application class)",
+    "Sinatra::Application (classic application class)",
+    "Sinatra.new (dynamic app creation)"
+  ]
+}

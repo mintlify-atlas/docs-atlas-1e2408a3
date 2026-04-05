@@ -1,0 +1,160 @@
+---
+title: "Sessions and Security"
+description: "Manage user sessions securely and configure Rack::Protection"
+---
+
+## Using sessions
+
+A session keeps state across requests for a single user. Enable sessions with:
+
+```ruby
+enable :sessions
+```
+
+Once enabled, a `session` hash is available in every route:
+
+```ruby
+enable :sessions
+
+get '/' do
+  "value = " << session[:value].inspect
+end
+
+get '/:value' do
+  session['value'] = params['value']
+end
+```
+
+## Session secret security
+
+Session data stored in the cookie is signed with a secret using HMAC-SHA1. For strong security, the secret should be a cryptographically secure random value of at least 64 bytes (512 bits, 128 hex characters).
+
+By default, Sinatra generates a 32-byte random secret for you — but it changes on every restart. If you run multiple instances of your application, each instance would then have a different secret, causing sessions to be invalid across instances.
+
+The recommended approach (following [12-factor config](https://12factor.net/config)) is to generate a secret once, store it in an environment variable, and load it in your app.
+
+**Step 1: Generate a 64-byte secret**
+
+```bash
+ruby -e "require 'securerandom'; puts SecureRandom.hex(64)"
+```
+
+**Step 2: Set the environment variable**
+
+```bash
+echo "export SESSION_SECRET=<your-generated-value>" >> ~/.bashrc
+```
+
+**Step 3: Load it in your app**
+
+```ruby
+require 'securerandom'
+set :session_secret, ENV.fetch('SESSION_SECRET') { SecureRandom.hex(64) }
+```
+
+This falls back to a freshly generated secret if the environment variable is not set.
+
+## Session config options
+
+Pass a hash to the `:sessions` setting to configure session behavior. For example, to restrict the session cookie to a specific domain:
+
+```ruby
+set :sessions, :domain => 'foo.com'
+```
+
+To share the session across all subdomains of `foo.com`, prefix the domain with a dot:
+
+```ruby
+set :sessions, :domain => '.foo.com'
+```
+
+Set an expiry time (in seconds):
+
+```ruby
+set :sessions, :expire_after => 2592000
+```
+
+## Custom session middleware
+
+By default, `enable :sessions` uses `Rack::Session::Cookie`, which stores all session data in the cookie itself. For large session data this increases response size. You can substitute any Rack session middleware.
+
+**Option 1: Keep `enable :sessions` and override the store**
+
+```ruby
+enable :sessions
+set :session_store, Rack::Session::Pool
+```
+
+With session options:
+
+```ruby
+set :sessions, :expire_after => 2592000
+set :session_store, Rack::Session::Pool
+```
+
+**Option 2: Use middleware directly (without `enable :sessions`)**
+
+```ruby
+use Rack::Session::Pool, :expire_after => 2592000
+use Rack::Protection::RemoteToken
+use Rack::Protection::SessionHijacking
+```
+
+<Note>
+  When you add session middleware directly with `use` instead of calling `enable :sessions`, Sinatra does not enable session-based protection automatically. You must add `Rack::Protection::RemoteToken` and `Rack::Protection::SessionHijacking` manually as shown above.
+</Note>
+
+## Security with Rack::Protection
+
+Sinatra uses [Rack::Protection](https://github.com/sinatra/sinatra/tree/main/rack-protection#readme) by default to defend against common web attacks including CSRF, clickjacking, XSS, and more.
+
+<Warning>
+  Disabling protection opens your application to a wide range of common vulnerabilities. Only disable specific layers when you have a deliberate reason.
+</Warning>
+
+**Disable all protections:**
+
+```ruby
+disable :protection
+```
+
+**Disable a single protection layer:**
+
+```ruby
+set :protection, :except => :path_traversal
+```
+
+**Disable multiple protection layers:**
+
+```ruby
+set :protection, :except => [:path_traversal, :remote_token]
+```
+
+**Enable session-based protection without `enable :sessions`:**
+
+```ruby
+set :protection, :session => true
+```
+
+<Note>
+  Session-based protections (such as CSRF token checking) are only active when sessions are enabled. If you configure sessions outside of Sinatra — for example in `config.ru` or via a separate `Rack::Builder` — use `set :protection, :session => true` to opt into session protection manually.
+</Note>
+
+## Host authorization
+
+The `host_authorization` setting configures `Rack::Protection::HostAuthorization`, which blocks requests with unrecognized hostnames to prevent DNS rebinding attacks. It inspects the `Host`, `X-Forwarded-Host`, and `Forwarded` headers.
+
+```ruby
+set :host_authorization, {
+  permitted_hosts: ['example.com', 'www.example.com'],
+  status: 403,
+  message: 'Host not permitted'
+}
+```
+
+Key options:
+
+- **`permitted_hosts`** — array of allowed hostnames or `IPAddr` objects. In `development`, `.localhost`, `.test`, and all IP addresses are permitted by default. If empty, all hostnames are allowed (the default for non-development environments).
+- **`status`** — HTTP status code for blocked requests. Defaults to `403`.
+- **`message`** — response body for blocked requests. Defaults to `"Host not permitted"`.
+- **`allow_if`** — a `Proc` for custom allow/deny logic. The proc receives the full Rack environment.

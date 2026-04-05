@@ -1,0 +1,132 @@
+---
+title: "Testing"
+description: "Write tests for your Sinatra application using Rack::Test"
+---
+
+Sinatra tests can be written using any Rack-based testing library or framework. [Rack::Test](https://www.rubydoc.info/github/rack/rack-test/main/frames) is recommended.
+
+## Basic setup with Minitest
+
+<Steps>
+  <Step title="Add rack-test to your Gemfile">
+    ```ruby
+    gem 'rack-test'
+    gem 'minitest'
+    ```
+  </Step>
+
+  <Step title="Require your app and test dependencies">
+    At the top of your test file, require your Sinatra app, Minitest, and Rack::Test.
+
+    ```ruby
+    require 'my_sinatra_app'
+    require 'minitest/autorun'
+    require 'rack/test'
+    ```
+  </Step>
+
+  <Step title="Write your test class">
+    Include `Rack::Test::Methods` and define an `app` method that returns your application:
+
+    ```ruby
+    class MyAppTest < Minitest::Test
+      include Rack::Test::Methods
+
+      def app
+        Sinatra::Application
+      end
+
+      def test_my_default
+        get '/'
+        assert_equal 'Hello World!', last_response.body
+      end
+
+      def test_with_params
+        get '/meet', :name => 'Frank'
+        assert_equal 'Hello Frank!', last_response.body
+      end
+
+      def test_with_user_agent
+        get '/', {}, 'HTTP_USER_AGENT' => 'Songbird'
+        assert_equal "You're using Songbird!", last_response.body
+      end
+    end
+    ```
+  </Step>
+</Steps>
+
+<Note>
+If you are using Sinatra in the modular style, replace `Sinatra::Application` in the `app` method with the class name of your app (e.g., `MyApp`).
+</Note>
+
+## Simulating requests
+
+`Rack::Test::Methods` provides helper methods for simulating HTTP requests. Each method accepts a path, optional params hash, and an optional Rack environment hash:
+
+| Method     | Description                    |
+| ---------- | ------------------------------ |
+| `get`      | Simulate a GET request         |
+| `post`     | Simulate a POST request        |
+| `put`      | Simulate a PUT request         |
+| `patch`    | Simulate a PATCH request       |
+| `delete`   | Simulate a DELETE request      |
+| `head`     | Simulate a HEAD request        |
+| `options`  | Simulate an OPTIONS request    |
+
+## Inspecting the response
+
+After making a request, inspect `last_response`:
+
+```ruby
+def test_response_details
+  get '/hello'
+
+  assert_equal 200, last_response.status
+  assert_equal 'Hello World!', last_response.body
+  assert_equal 'text/html;charset=utf-8', last_response.headers['Content-Type']
+end
+```
+
+| Accessor                    | Description                              |
+| --------------------------- | ---------------------------------------- |
+| `last_response.status`      | HTTP status code (e.g., `200`, `404`)    |
+| `last_response.body`        | Response body as a string                |
+| `last_response.headers`     | Response headers hash                    |
+
+<Note>
+In the test environment, Sinatra sets `raise_errors` to `true` by default. This means exceptions in your route handlers will propagate to your tests rather than being caught and rendered as 500 responses, which makes debugging easier.
+</Note>
+
+## Using RSpec
+
+If you prefer RSpec, the setup is equivalent — include `Rack::Test::Methods` and define an `app` method:
+
+```ruby
+require 'my_sinatra_app'
+require 'rspec'
+require 'rack/test'
+
+RSpec.describe 'MyApp' do
+  include Rack::Test::Methods
+
+  def app
+    Sinatra::Application
+  end
+
+  it 'returns Hello World on the root path' do
+    get '/'
+    expect(last_response).to be_ok
+    expect(last_response.body).to eq('Hello World!')
+  end
+
+  it 'greets by name with params' do
+    get '/meet', name: 'Frank'
+    expect(last_response.body).to eq('Hello Frank!')
+  end
+
+  it 'detects user agent from env hash' do
+    get '/', {}, 'HTTP_USER_AGENT' => 'Songbird'
+    expect(last_response.body).to eq("You're using Songbird!")
+  end
+end
+```

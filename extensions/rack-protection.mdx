@@ -1,0 +1,472 @@
+---
+title: "Rack::Protection"
+description: "Security middleware protecting against common web attacks, built into Sinatra"
+---
+
+`Rack::Protection` is a collection of security middleware that protects Rack applications against common web attacks. It is bundled with Sinatra and enabled by default.
+
+## Default behavior in Sinatra
+
+When you use Sinatra, most `Rack::Protection` middlewares are enabled automatically. You don't need to add anything to your application for the default protections to apply.
+
+To disable all protections:
+
+```ruby
+disable :protection
+```
+
+<Warning>
+  Disabling protection removes defenses against XSS, clickjacking, CSRF, and other attacks. Only disable specific middlewares when you have a concrete reason, and prefer using `:except` to skip individual protections rather than disabling all of them.
+</Warning>
+
+To skip one or more specific protections while keeping the rest:
+
+```ruby
+set :protection, except: :path_traversal
+set :protection, except: [:remote_token, :session_hijacking]
+```
+
+## Standalone Rack usage
+
+`Rack::Protection` can be used in any Rack application independently of Sinatra.
+
+**Enable all default protections**
+
+```ruby
+# config.ru
+require 'rack/protection'
+
+use Rack::Protection
+run MyApp
+```
+
+**Skip a specific middleware**
+
+```ruby
+# config.ru
+require 'rack/protection'
+
+use Rack::Protection, except: :path_traversal
+run MyApp
+```
+
+**Use a single middleware**
+
+```ruby
+# config.ru
+require 'rack/protection'
+
+use Rack::Protection::AuthenticityToken
+run MyApp
+```
+
+**Skip multiple middlewares**
+
+```ruby
+use Rack::Protection, except: [:remote_token, :session_hijacking]
+```
+
+**Instrumentation**
+
+Pass an instrumenter to receive notifications when an attack is detected:
+
+```ruby
+use Rack::Protection, instrumenter: ActiveSupport::Notifications
+```
+
+The instrumenter receives a namespace (`'rack.protection'`) and the environment hash. The attack type is available under `env['rack.protection.attack']`.
+
+## Middleware included by default
+
+These middlewares are enabled when you call `use Rack::Protection` or rely on Sinatra's defaults.
+
+<AccordionGroup>
+  <Accordion title="ContentSecurityPolicy — CSP header">
+    Sets the `Content-Security-Policy` header to mitigate XSS and other content injection attacks.
+
+    **Attack prevented:** XSS and content injection
+
+    **Supported browsers:** Firefox 23+, Safari 7+, Chrome 25+, Opera 15+
+
+    Default policy: `default-src 'self'`
+
+    ```ruby
+    use Rack::Protection::ContentSecurityPolicy,
+        default_src: "'self'",
+        script_src: "'self' cdn.example.com",
+        style_src: "'self'",
+        img_src: "'self' data:"
+    ```
+
+    Use `report_only: true` to receive violation reports without blocking:
+
+    ```ruby
+    use Rack::Protection::ContentSecurityPolicy,
+        default_src: "'self'",
+        report_only: true,
+        report_uri: '/csp-violations'
+    ```
+
+    No-argument directives (pass `true` to enable):
+
+    ```ruby
+    use Rack::Protection::ContentSecurityPolicy,
+        default_src: "'self'",
+        upgrade_insecure_requests: true,
+        block_all_mixed_content: true
+    ```
+  </Accordion>
+
+  <Accordion title="FrameOptions — Clickjacking protection">
+    Sets the `X-Frame-Options` header to control whether browsers allow the page to be embedded in a frame or iframe.
+
+    **Attack prevented:** Clickjacking
+
+    **Supported browsers:** IE 8+, Firefox 3.6.9+, Opera 10.50+, Safari 4+, Chrome 4.1+
+
+    Default: `SAMEORIGIN` (allows framing from the same origin).
+
+    ```ruby
+    # Allow framing only from same origin (default)
+    use Rack::Protection::FrameOptions, frame_options: :sameorigin
+
+    # Deny all framing
+    use Rack::Protection::FrameOptions, frame_options: :deny
+    ```
+  </Accordion>
+
+  <Accordion title="HttpOrigin — Validate Origin header">
+    Rejects unsafe requests (non-GET/HEAD) when the `Origin` header does not match the application's base URL.
+
+    **Attack prevented:** CSRF
+
+    **Supported browsers:** Chrome 2+, Safari 4+
+
+    ```ruby
+    # Permit additional origins
+    use Rack::Protection, permitted_origins: [
+      'http://localhost:3000',
+      'http://staging.example.com'
+    ]
+    ```
+
+    Custom allow logic:
+
+    ```ruby
+    use Rack::Protection::HttpOrigin,
+        allow_if: ->(env) { env['HTTP_ORIGIN'].end_with?('.internal.example.com') }
+    ```
+  </Accordion>
+
+  <Accordion title="IPSpoofing — IP spoofing detection">
+    Detects inconsistencies between `X-Forwarded-For`, `HTTP_CLIENT_IP`, and `HTTP_X_REAL_IP` headers that indicate IP spoofing.
+
+    **Attack prevented:** IP spoofing
+
+    **Supported browsers:** all
+
+    ```ruby
+    use Rack::Protection::IPSpoofing
+    ```
+
+    This middleware denies the request if `HTTP_CLIENT_IP` or `HTTP_X_REAL_IP` is set but does not appear in the `X-Forwarded-For` list.
+  </Accordion>
+
+  <Accordion title="JsonCsrf — JSON CSRF protection">
+    Protects JSON GET endpoints from CSRF attacks by checking the referrer even for GET requests when the response content type is `application/json`.
+
+    **Attack prevented:** CSRF via JSON
+
+    **Supported browsers:** all
+
+    ```ruby
+    use Rack::Protection::JsonCsrf
+    ```
+
+    If the request includes an `Origin` header, this middleware defers to `HttpOrigin` for the decision. XHR requests are excluded from this check.
+
+    Custom allow logic:
+
+    ```ruby
+    use Rack::Protection::JsonCsrf,
+        allow_if: ->(env) { env['HTTP_X_INTERNAL_REQUEST'] == '1' }
+    ```
+  </Accordion>
+
+  <Accordion title="PathTraversal — Directory traversal prevention">
+    Normalizes `PATH_INFO` by unescaping percent-encoded `/` and `.` characters and resolving `..` segments before the request reaches the application.
+
+    **Attack prevented:** Directory traversal
+
+    **Supported browsers:** all
+
+    For example, `GET /foo/%2e%2e%2fbar` becomes `GET /bar`.
+
+    ```ruby
+    use Rack::Protection::PathTraversal
+    ```
+  </Accordion>
+
+  <Accordion title="ReferrerPolicy — Referrer-Policy header">
+    Sets the `Referrer-Policy` header to control how much referrer information is included with requests.
+
+    **Attack prevented:** Information leakage and third-party tracking
+
+    Default: `strict-origin-when-cross-origin`
+
+    ```ruby
+    use Rack::Protection::ReferrerPolicy,
+        referrer_policy: 'strict-origin-when-cross-origin'
+    ```
+
+    Other valid values include `no-referrer`, `no-referrer-when-downgrade`, `origin`, `same-origin`, `strict-origin`, and `unsafe-url`.
+  </Accordion>
+
+  <Accordion title="RemoteToken — Token-based CSRF for remote requests">
+    Accepts unsafe requests only if the request originates from the same host, or if the submitted token matches the session token. Compatible with `rack-csrf`.
+
+    **Attack prevented:** CSRF
+
+    **Supported browsers:** all
+
+    ```ruby
+    use Rack::Protection::RemoteToken
+    ```
+
+    This is less strict than `AuthenticityToken` — same-origin requests pass without a token. Use `AuthenticityToken` when you need to require a token for all non-safe requests.
+  </Accordion>
+
+  <Accordion title="XssHeader — XSS protection header">
+    Sets `X-XSS-Protection` to instruct browsers to block reflected XSS attacks. Also sets `X-Content-Type-Options: nosniff` to prevent MIME type sniffing.
+
+    **Attack prevented:** Non-persistent XSS
+
+    **Supported browsers:** IE 8+, Chrome
+
+    ```ruby
+    use Rack::Protection::XSSHeader
+    # Sets: X-XSS-Protection: 1; mode=block
+    #       X-Content-Type-Options: nosniff
+    ```
+
+    Disable `nosniff` if needed:
+
+    ```ruby
+    use Rack::Protection::XSSHeader, nosniff: false
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Middleware not included by default
+
+These middlewares are available but not enabled when using `use Rack::Protection`. Use them individually or include them by name.
+
+<Warning>
+  These middlewares are excluded from the default bundle because they can break legitimate use cases depending on your application's behavior. Enable them only when you understand their implications.
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="AuthenticityToken — CSRF with session token">
+    Validates all non-safe requests (POST, PUT, PATCH, DELETE) against a CSRF token stored in the session. Checks both the `X-CSRF-Token` header and the `authenticity_token` form parameter.
+
+    **Attack prevented:** CSRF
+
+    **Not included by default** because it requires session middleware and breaks applications that don't use sessions.
+
+    ```ruby
+    # config.ru
+    use Rack::Session::Cookie, secret: 'your-secret-here'
+    use Rack::Protection::AuthenticityToken
+    run MyApp
+    ```
+
+    **Embed the token in a form**
+
+    ```ruby
+    token = Rack::Protection::AuthenticityToken.token(env['rack.session'])
+    # Use token as the value of a hidden authenticity_token field
+    ```
+
+    **Options**
+
+    | Option | Default | Description |
+    |---|---|---|
+    | `:authenticity_param` | `'authenticity_token'` | Name of the form parameter |
+    | `:key` | `:csrf` | Session key for storing the token |
+    | `:allow_if` | `nil` | Proc for custom allow/deny logic |
+
+    ```ruby
+    use Rack::Protection::AuthenticityToken,
+        authenticity_param: 'your_token_param'
+    ```
+  </Accordion>
+
+  <Accordion title="CookieTossing — Prevent cookie tossing">
+    Rejects requests that contain multiple session cookies or a session cookie set for a parent domain. Removes any invalid cookies from the response.
+
+    **Attack prevented:** Cookie tossing
+
+    **Not included by default** because it requires knowing the session cookie name.
+
+    ```ruby
+    use Rack::Protection::CookieTossing, session_key: 'rack.session'
+    ```
+
+    The middleware denies requests where the session cookie appears more than once in the `Cookie` header, then cleans up by expiring the bad cookies in the response.
+  </Accordion>
+
+  <Accordion title="EscapedParams — HTML-escape request parameters">
+    Automatically escapes `params` values before they reach the application, so they can be embedded in HTML or JavaScript without additional escaping.
+
+    **Attack prevented:** XSS via reflected parameters
+
+    **Not included by default** because it modifies the request data, which can interfere with applications that use raw parameter values (e.g., APIs).
+
+    ```ruby
+    use Rack::Protection::EscapedParams
+    # Default: HTML-escapes all params values
+    ```
+
+    **Options**
+
+    | Option | Default | Description |
+    |---|---|---|
+    | `:escape` | `:html` | Escaping mode: `:html`, `:javascript`, `:url`, or an array |
+
+    ```ruby
+    use Rack::Protection::EscapedParams, escape: [:html, :url]
+    ```
+  </Accordion>
+
+  <Accordion title="FormToken — Form token validation">
+    Like `AuthenticityToken`, but skips the check for Ajax requests (`X-Requested-With: XMLHttpRequest`). Compatible with `rack-csrf`.
+
+    **Attack prevented:** CSRF
+
+    **Not included by default** because it requires session middleware.
+
+    ```ruby
+    use Rack::Session::Cookie, secret: 'your-secret-here'
+    use Rack::Protection::FormToken
+    run MyApp
+    ```
+  </Accordion>
+
+  <Accordion title="HostAuthorization — Block unrecognized host headers">
+    Blocks requests whose `Host`, `X-Forwarded-Host`, or `Forwarded` headers do not match an allowed hostname. Protects against DNS rebinding attacks.
+
+    **Attack prevented:** DNS rebinding and Host header attacks
+
+    **Not included by default** because it requires explicit configuration of permitted hosts.
+
+    ```ruby
+    use Rack::Protection::HostAuthorization,
+        permitted_hosts: ['www.example.com', 'api.example.com']
+    ```
+
+    **Wildcard subdomains** (prefix the hostname with `.`):
+
+    ```ruby
+    use Rack::Protection::HostAuthorization,
+        permitted_hosts: ['.example.com']
+    # Matches: foo.example.com, api.example.com, etc.
+    ```
+
+    **Custom allow logic:**
+
+    ```ruby
+    use Rack::Protection::HostAuthorization,
+        allow_if: ->(env) { env['HTTP_HOST'].end_with?('.internal') }
+    ```
+  </Accordion>
+
+  <Accordion title="RemoteReferrer — Block cross-origin referrers">
+    Rejects unsafe requests when the `Referer` header is set to a different host than the application.
+
+    **Attack prevented:** CSRF
+
+    **Not included by default** because legitimate cross-origin POST requests (e.g., OAuth callbacks, payment providers) would be blocked.
+
+    ```ruby
+    use Rack::Protection::RemoteReferrer
+    ```
+  </Accordion>
+
+  <Accordion title="SessionHijacking — Prevent session hijacking">
+    Tracks request properties such as the `User-Agent` in the session and clears the session if they change between requests.
+
+    **Attack prevented:** Session hijacking
+
+    **Not included by default** because it can unexpectedly log users out when they change browsers or update their browser version.
+
+    ```ruby
+    use Rack::Session::Cookie, secret: 'your-secret-here'
+    use Rack::Protection::SessionHijacking
+    ```
+
+    By default, tracks `HTTP_USER_AGENT`. You can customize which headers are tracked:
+
+    ```ruby
+    use Rack::Protection::SessionHijacking,
+        track: %w[HTTP_USER_AGENT HTTP_ACCEPT_LANGUAGE]
+    ```
+
+    <Note>
+      All tracked headers can be spoofed by an attacker, so this middleware reduces the risk of passive session hijacking (e.g., Firesheep) but does not eliminate determined attacks.
+    </Note>
+  </Accordion>
+
+  <Accordion title="StrictTransport — HSTS header">
+    Sets the `Strict-Transport-Security` header to instruct browsers to only communicate over HTTPS for a given period.
+
+    **Attack prevented:** Protocol downgrade attacks and cookie hijacking
+
+    **Not included by default** because it is only appropriate for HTTPS-only deployments.
+
+    ```ruby
+    use Rack::Protection::StrictTransport
+    # Sets: Strict-Transport-Security: max-age=31536000
+    ```
+
+    **Options**
+
+    | Option | Default | Description |
+    |---|---|---|
+    | `:max_age` | `31536000` | Duration in seconds (default: 1 year) |
+    | `:include_subdomains` | `false` | Apply HSTS to all subdomains |
+    | `:preload` | `false` | Signal eligibility for browser preload lists |
+
+    ```ruby
+    use Rack::Protection::StrictTransport,
+        max_age: 63_072_000,       # 2 years
+        include_subdomains: true,
+        preload: true
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Configuring in Sinatra
+
+Sinatra provides a `:protection` setting to control which middlewares are active.
+
+**Skip a single protection**
+
+```ruby
+set :protection, except: :path_traversal
+```
+
+**Skip multiple protections**
+
+```ruby
+set :protection, except: [:remote_token, :frame_options]
+```
+
+**Disable all protections**
+
+```ruby
+disable :protection
+```
+
+<Warning>
+  Disabling `:protection` entirely removes all security headers and CSRF defenses. This is only appropriate in fully isolated environments such as internal tools with no user input.
+</Warning>
